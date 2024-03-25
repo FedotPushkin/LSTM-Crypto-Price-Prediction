@@ -3,7 +3,7 @@ import plotly.offline as py
 import plotly.graph_objs as go
 from scipy.signal import savgol_filter
 import sys
-
+import pandas as pd
 
 class Genlabels(object):
     def __init__(self, data, window, polyorder=3, graph=False):
@@ -42,9 +42,15 @@ class Genlabels(object):
 
     def graph(self):
         # graph the labels
-        trace0 = go.Scatter(y=self.hist, name='Price')
+        candles=pd.read_pickle('../historical_data/candles.csv')
+        trace0 =go.Candlestick(#x=candles['Date'],
+                                                open=candles['open'],
+                                                high=candles['high'],
+                                                low=candles['low'],
+                                                close=candles['close'])
         trace1 = go.Scatter(y=self.savgol, name='Filter')
         trace2 = go.Scatter(y=self.savgol_deriv, name='Derivative', yaxis='y2')
+
         data = [trace0, trace1, trace2]
 
         layout = go.Layout(
@@ -58,8 +64,12 @@ class Genlabels(object):
                 side='right'
             )
         )
-        fig = go.Figure(data=data, layout=layout)
-        py.plot(fig, filename='../docs/label.html')
+
+        fig2 = go.Figure(data=data, layout=layout)
+        #py.plot(fig1, filename='../docs/label1.html')
+        py.plot(fig2, filename='../docs/label2.html')
 
 if __name__ == '__main__':
-    labels = Genlabels(window=25, polyorder=3, hist='../historical_data/hist_data.npy', graph=True)
+    hist = '../historical_data/hist_mean.npy'
+    data = np.load(hist)
+    labels = Genlabels(window=25, polyorder=3, data=data, graph=True)

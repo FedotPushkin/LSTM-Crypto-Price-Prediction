@@ -1,5 +1,6 @@
 from binance import Client
 import numpy as np
+import statistics
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -42,8 +43,8 @@ def isgreenlongtail(candle):
         return True
     else:
         return False
-intervals = {240:'4h', 60:'1h', 15:'15m', 5:'5m'}
-start = '25 Mar, 2022'
+intervals = {240:'4h', 60:'1h',30:'30m', 15:'15m', 5:'5m'}
+start = '20 Mar, 2024'
 trading_pair = 'BTCUSDT'
 
 # load key and secret and connect to API
@@ -53,7 +54,7 @@ api = Client(keys[0], keys[1])
 
 # fetch desired candles of all data
 print('Fetching data (may take multiple API requests)')
-hist = api.get_historical_klines(trading_pair, intervals[60], start)
+hist = api.get_historical_klines(trading_pair, intervals[30], start)
 
 print('Finished.')
 
@@ -63,8 +64,8 @@ hist = np.array(hist, dtype=np.float32)
 op = hist[:, 1]
 hi = hist[:, 2]
 lo = hist[:, 3]
-
 cl = hist[:, 4]
+
 candles = pd.DataFrame({'open':op,'close':cl,'high':hi,'low':lo})
 
 def calc_color_prob(method):
@@ -85,18 +86,27 @@ def calc_color_prob(method):
 #calc_color_prob(isredlongtail)
 #calc_color_prob(isredlonghead)
 sns.set_theme(style="whitegrid")
-dates = pd.date_range("1 1 2024", periods=252, freq="D")
+dates = pd.date_range("1 1 2024", periods=len(hist), freq="D")
 candles['Date'] = dates
 data = pd.DataFrame(hist, dates)
 data = data.rolling(7).mean()
 
-sns.lineplot(data=data, palette="tab10", linewidth=2.5)
+#sns.lineplot(data=data, palette="tab10", linewidth=2.5)
 # data information
 print("\nDatapoints:  {0}".format(hist.shape[0]))
 print("Memory:      {0:.2f} Mb\n".format((hist.nbytes) / 1000000))
 
 # save to file as numpy object
-#np.save("hist_data", hist)
+np.save("hist_cl", cl)
+np.save("hist_op", op)
+np.save("hist_lo", lo)
+np.save("hist_hi", hi)
+res=[]
+for z in zip(op,cl):
+    res.append((z[0]+z[1])/2)
+
+np.save("hist_mean", res)
+candles.to_pickle('candles.csv')
 
 model = XGBRegressor(n_estimators=1000, max_depth=7, eta=0.1, subsample=0.7, colsample_bytree=0.8)
 fig = go.Figure(data=[go.Candlestick(x=candles['Date'],
