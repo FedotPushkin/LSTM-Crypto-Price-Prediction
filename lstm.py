@@ -3,11 +3,17 @@ import plotly.offline as py
 import plotly.graph_objs as go
 from keras.layers import LSTM, Dense, Dropout, TimeDistributed
 from keras.models import Sequential
+from keras.saving import save_model,load_model
 from sklearn.preprocessing import StandardScaler
-from sklearn.externals import joblib
+import joblib
 from keras.utils import to_categorical
 import json
-import os
+import os,sys
+import plotly.express as px
+sys.path.append(os.path.join('C:/', 'Users', 'Fedot','Downloads','LSTM-Crypto-Price-Prediction','historical_data'))
+sys.path.append(os.path.join('C:/', 'Users', 'Fedot','Downloads','LSTM-Crypto-Price-Prediction','technical_analysis'))
+
+from get_data import get_data_files
 
 from technical_analysis.generate_labels import Genlabels
 from technical_analysis.macd import Macd
@@ -17,9 +23,53 @@ from technical_analysis.dpo import Dpo
 from technical_analysis.coppock import Coppock
 
 
-def extract_data(data):
+def graph(candles, holding, start):
+    # graph the labels
+    # candles=pd.read_pickle('../historical_data/candles.csv')
+    maxres = 0
+    pars = [0.4, 0.0]
+    for i in range(3):
+        for j in range(3):
+            pass
+    candles = candles.iloc[start:]
+    # holding = self.strategy_bench(thresl=0.4, thress=0.2 )[1]
+
+    trace0 = go.Candlestick(x=candles['Date'],
+                            open=candles['open'],
+                            high=candles['high'],
+                            low=candles['low'],
+                            close=candles['close'])
+    #trace1 = go.Scatter(x=candles['Date'], y=self.savgol, name='Filter')
+    #trace2 = go.Scatter(x=candles['Date'], y=self.savgol_deriv, name='Derivative', yaxis='y2')
+    trace3 = go.Scatter(x=candles['Date'], y=holding, name='holding')#, yaxis='y3')
+    data = [trace0, trace3]#, trace2, trace3]
+
+    layout = go.Layout(
+        title='Labels',
+        yaxis=dict(
+            title='USDT value'
+        ),
+        yaxis2=dict(
+            title='Derivative of Filter',
+            overlaying='y',
+            side='right'
+        ),
+        yaxis3=dict(
+            title='holding',
+            overlaying='y',
+            side='right'
+        )
+    )
+
+    fig2 = go.Figure(data=data, layout=layout)
+    # fig2 = go.Figure(data=trace0)#, layout=layout)
+    # py.plot(fig1, filename='../docs/label1.html')
+    py.plot(fig2, filename='label2.html')
+
+
+def extract_data(data,validation_length):
     # obtain labels
-    labels = Genlabels(data, window=25, polyorder=3).labels
+    labels = Genlabels(data, window=25, polyorder=3,graph=True).labels
 
     # obtain features
     macd = Macd(data, 6, 12, 3).values
@@ -29,16 +79,21 @@ def extract_data(data):
     inter_slope = PolyInter(data, progress_bar=True).values
 
     # truncate bad values and shift label
-    X = np.array([macd[30:-1], 
-                  stoch_rsi[30:-1], 
-                  inter_slope[30:-1],
-                  dpo[30:-1], 
-                  cop[30:-1]])
-
+    X = np.array([macd[30:-validation_length],
+             stoch_rsi[30:-validation_length],
+           inter_slope[30:-validation_length],
+                   dpo[30:-validation_length],
+                   cop[30:-validation_length]])
+    X_val = np.array([macd[-validation_length:],
+                 stoch_rsi[-validation_length:],
+               inter_slope[-validation_length:],
+                       dpo[-validation_length:],
+                       cop[-validation_length:]])
     X = np.transpose(X)
-    labels = labels[31:]
-
-    return X, labels
+    X_val = np.transpose(X_val)
+    labels_tt = labels[31:1-validation_length]
+    labels_val=labels[-validation_length:]
+    return X, labels_tt,X_val,labels_val
 
 def adjust_data(X, y, split=0.8):
     # count the number of each label
@@ -115,22 +170,158 @@ def build_model():
                   metrics=['accuracy'])
 
     return model
+def strategy_bench(y_pred, start, thresl=0.6, thress=0.1,verb=False):
 
+    start_balance=1000
+    start_short_balance = 1000
+    short_balance=start_short_balance
+    balance = start_balance
+    profit_long=[]
+    leftover=0
+    profit_short=[]
+    long_value=0
+    short_value=0
+    amount =0
+    amount_short=0
+    trades=0
+    trades_short=0
+    fee=0.001
+    position = 0#'long':1,'short':-1,'wait:0
+    holding=[]
+   # for i in range(self.window):
+     #   holding.append(0)
+    for i in range(start+1,start+len(y_pred)):#self.window-1,candles.shape[0]-1):
+        #self.savgol = self.apply_filter(deriv=0, hist=candles.iloc[:i + 1]['mean'])
+        #self.savgol_deriv = self.apply_filter(deriv=1, hist=candles.iloc[:i + 1]['mean'])
+        #####long#####
+        if balance>0 and amount==0 and position ==0 and y_pred[i-start]>0:# self.savgol_deriv[i]>thresl:
+            ##open long
+            long_value=start_balance
+            amount = start_balance*(1-fee)/candles.iloc[i-1]['open']
+            balance = 0
+            position = 1
+            holding.append(1)
+            if verb: print('long at'+str(candles.iloc[i-1]['Date'])+'for '+ str(candles.iloc[i-1]['open']))
+
+        else:
+              ##close long
+            if  amount>0 and position==1 and y_pred[i-start]<0:#self.savgol_deriv[i]<thress and
+                profit_long.append(((1-fee)*amount*candles.iloc[i-1]['open']-long_value)/long_value)
+                leftover += (1-fee)*amount*candles.iloc[i-1]['open']-start_balance
+                trades+=1
+                balance=start_balance
+                amount = 0
+                position = 0
+                holding.append(0)
+                if verb: print('short at' + str(candles.iloc[i-1]['Date']) + 'for ' + str(candles.iloc[i-1]['open']))
+            #####short#####
+            else:
+                #open short
+
+                if position==0  and y_pred[i-start]<0:#self.savgol_deriv[i]<0-thress:
+                    position=-1
+                    amount_short=short_balance/candles.iloc[i-1]['open']
+                    short_value = (1 - fee) * amount_short * candles.iloc[i-1]['open']
+                    holding.append(-1)
+                else: #close short
+                    if position==-1 and y_pred[i-start]>0:#
+                        position = 0
+                        short_balance+=short_value-(1 + fee) * amount_short * candles.iloc[i-1]['open']
+                        profit_short.append((short_value-(1 + fee) * amount_short * candles.iloc[i-1]['open'])/short_value)
+
+                        holding.append(0)
+                        trades_short+=1
+
+                    else:
+                        holding.append(position)
+        #self.savgol = self.apply_filter(deriv=0, hist=candles.iloc[:i + 3]['mean'])
+        #self.savgol_deriv = self.apply_filter(deriv=1, hist=candles.iloc[:i + 3]['mean'])
+
+
+    if verb: print('balance',balance,'amount',amount,'trades',trades,'trades_short ',trades_short)
+    result = (leftover+amount*candles.iloc[candles.shape[0]-1]['close'])/start_balance
+    result_short = (short_balance + amount_short * candles.iloc[candles.shape[0] - 1]['close']) / start_short_balance
+    print('threshhold',thresl,'trades long',trades,',trades_short', trades_short)
+    #print('result_long %.2f avg  long %.2f result_short %.2f avg  short %.2f'%(result,statistics.mean(profit_long),result_short,statistics.mean(profit_short)))
+    trace1 = px.histogram(profit_long,nbins=400)
+    #print(profit_long)
+    trace2 = px.histogram(profit_short,nbins=400)
+    #fig=go.Figure(data=[trace1,trace2])
+    trace1.show()
+    return result,holding
 if __name__ == '__main__':
-    with open('historical_data/hist_data.json') as f:
-        data = json.load(f)
+    start = '20 Mar 2022'
+    end = '25 Mar 2024'
 
+    #with open('historical_data/hist_data.json') as f:
+      #  data = json.load(f)
+    load_data = True
+    train = False
+    predict = False
+    bench = True
     # load and reshape data
-    X, y = extract_data(np.array(data['close']))
+    validation_length = 3000
+    if load_data:
+        candles = get_data_files(start, end, 30)
+        X, y, X_val,y_val = extract_data(candles['mean'], validation_length=validation_length)
+        np.save('X',X)
+        np.save('y', y)
+        np.save('X_val', X_val)
+        np.save('y_val', y_val)
+    else:
+        X, y, X_val,y_val = np.load('X.npy'),np.load('y.npy'),np.load('X_val.npy'),np.load('y_val.npy')
     X, y = shape_data(X, y, timesteps=10)
-
+    X_val,y_val = shape_data(X_val,y_val, timesteps=10)
     # ensure equal number of labels, shuffle, and split
     X_train, X_test, y_train, y_test = adjust_data(X, y)
     
     # binary encode for softmax function
-    y_train, y_test = to_categorical(y_train, 2), to_categorical(y_test, 2)
+    y_train, y_test,y_val = to_categorical(y_train, 2), to_categorical(y_test, 2),to_categorical(y_val, 2)
 
     # build and train model
-    model = build_model()
-    model.fit(X_train, y_train, epochs=10, batch_size=8, shuffle=True, validation_data=(X_test, y_test))
-    model.save('models/lstm_model.h5')
+    if train:
+        model = build_model()
+        model.fit(X_train, y_train, epochs=20, batch_size=16, shuffle=True, validation_data=(X_test, y_test))
+        model.save('models/lstm_model.h5')
+    else:
+        model = load_model('models/lstm_model.h5')
+
+    y_pred=[]
+    if predict:
+        for i in range(validation_length-10):
+            X_val_s = np.expand_dims(X_val[i], axis=1)
+            preds = model.predict(X_val_s)
+            if i==0:
+                for p in preds:
+                    y_pred.append(p)
+            else:
+                y_pred.append(preds[-1])
+
+
+        for i in range(len(y_pred)):
+            if y_pred[i][0] < 0.45:
+                y_pred[i][0] = 1
+            else:
+                if y_pred[i][0] > 0.55:y_pred[i][0] = -1
+                else: y_pred[i][0] =0
+        y_pred = np.array(y_pred)
+        y_pred = y_pred.transpose()
+        np.save("predictions", y_pred)
+
+    else:
+        y_pred = np.load("predictions.npy")
+    #
+
+    #y_test_trade = y_pred.reshape(y_pred.shape[1],y_pred.shape[0])
+    if bench:
+        start =candles.shape[0] - validation_length
+        print(strategy_bench(y_pred=y_pred[0], start = start)[0])
+        holding=strategy_bench(y_pred=y_pred[0], start=start)[1]
+        np.save("holding", holding)
+        start = len(candles['mean']) - len(holding[:-100])
+        np.save("start", np.int(start))
+    else:
+
+        holding = np.load("holding.npy")
+        start = np.load("start.npy")
+    graph(candles=candles, holding=holding, start=start)

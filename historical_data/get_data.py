@@ -7,8 +7,9 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 from sklearn.linear_model import LinearRegression
-
+import sys,os
 from xgboost import XGBRegressor
+sys.path.append(os.path.join('C:/', 'Users', 'Fedot','Downloads','LSTM-Crypto-Price-Prediction','historical_data'))
 
 
 def calc_color_prob(method,candles):
@@ -65,7 +66,7 @@ def get_data_files(start,end,interval):
     trading_pair = 'BTCUSDT'
 
     # load key and secret and connect to API
-    keys = open('../historical_data/binance_key1.txt').readline()
+    keys = open('historical_data/binance_key1.txt').readline()
     print('Connecting to Client...')
     api = Client(keys[0], keys[1])
 
