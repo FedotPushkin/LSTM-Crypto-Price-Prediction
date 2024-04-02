@@ -83,10 +83,11 @@ def get_data_files(start,end,interval):
     hi = hist[:, 2]
     lo = hist[:, 3]
     cl = hist[:, 4]
+    vol =hist[:, 5]
     res = []
     for z in zip(op, cl):
         res.append((z[0] + z[1]) / 2)
-    candles = pd.DataFrame({'open':op,'close':cl,'high':hi,'low':lo,'mean':res})
+    candles = pd.DataFrame({'open':op,'close':cl,'high':hi,'low':lo,'mean':res,'vol':vol})
 
 
 

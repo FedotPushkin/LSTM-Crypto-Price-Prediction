@@ -8,9 +8,12 @@ from keras.saving import save_model,load_model
 from sklearn.preprocessing import StandardScaler
 import joblib
 from keras.utils import to_categorical
+from collections import Counter
 import json
+import statistics
 import os,sys
 import plotly.express as px
+from sklearn.model_selection import cross_val_score,StratifiedKFold
 sys.path.append(os.path.join('C:/', 'Users', 'Fedot','Downloads','LSTM-Crypto-Price-Prediction','historical_data'))
 sys.path.append(os.path.join('C:/', 'Users', 'Fedot','Downloads','LSTM-Crypto-Price-Prediction','technical_analysis'))
 
@@ -22,6 +25,8 @@ from technical_analysis.rsi import StochRsi
 from technical_analysis.poly_interpolation import PolyInter
 from technical_analysis.dpo import Dpo
 from technical_analysis.coppock import Coppock
+
+from ta.volatility import BollingerBands
 
 
 def graph(candles, holding, start):
@@ -35,14 +40,15 @@ def graph(candles, holding, start):
     candles = candles.iloc[start:]
     # holding = self.strategy_bench(thresl=0.4, thress=0.2 )[1]
 
-    trace0 = go.Candlestick(x=candles['Date'],
-                            open=candles['open'],
-                            high=candles['high'],
-                            low=candles['low'],
-                            close=candles['close'])
+    trace0 = go.Candlestick(x=candles[6],
+                            open=candles[0],
+                            high=candles[2],
+                            low=candles[3],
+                            close=candles[1],
+                            )
     #trace1 = go.Scatter(x=candles['Date'], y=self.savgol, name='Filter')
     #trace2 = go.Scatter(x=candles['Date'], y=self.savgol_deriv, name='Derivative', yaxis='y2')
-    trace3 = go.Scatter(x=candles['Date'], y=holding, name='holding',yaxis='y2')#, )
+    trace3 = go.Scatter(x=candles[6], y=holding, name='holding',yaxis='y2')#, )
     data = [trace0, trace3]#, trace2, trace3]
 
     layout = go.Layout(
@@ -70,21 +76,37 @@ def graph(candles, holding, start):
 
 def extract_tt_data(data,validation_length):
     # obtain labels
-    labels = Genlabels(data, window=25, polyorder=3,graph=True).labels
-    data =data[:-validation_length]
+    labels = Genlabels(data['close'], window=25, polyorder=3,graph=True).labels
+    open =data.iloc[:-validation_length]['open']
+    low =data.iloc[:-validation_length]['low']
+    high = data.iloc[:-validation_length]['high']
+
+    vol = data.iloc[:-validation_length]['vol']
+    data = data.iloc[:-validation_length]['close']
     # obtain features
     macd = Macd(data, 6, 12, 3).values
     stoch_rsi = StochRsi(data, period=14).hist_values
     dpo = Dpo(data, period=4).values
     cop = Coppock(data, wma_pd=10, roc_long=6, roc_short=3).values
-    inter_slope = PolyInter(data, progress_bar=True).values
 
+    #inter_slope = PolyInter(data, progress_bar=True).values
+    d=pd.DataFrame(data)
+    boll = BollingerBands(close=d['close'])
+    boll_h = boll.bollinger_hband_indicator()
+    boll_l = boll.bollinger_lband_indicator()
     # truncate bad values and shift label
-    X = np.array([macd[30:-validation_length],
-             stoch_rsi[30:-validation_length],
-           inter_slope[30:-validation_length],
-                   dpo[30:-validation_length],
-                   cop[30:-validation_length]])
+    X = np.array([macd[30:],
+             stoch_rsi[30:],
+           #inter_slope[30:-validation_length],
+                  open[30:],
+                  high[30:],
+                  low[30:],
+                  data[30:],
+                  vol[30:],
+                  boll_h[30:],
+                  boll_l[30:],
+                   dpo[30:],
+                   cop[30:]])
 
     X = np.transpose(X)
 
@@ -93,16 +115,32 @@ def extract_tt_data(data,validation_length):
     return X, labels,
 
 def build_val_data(data):
-    data =np.array(data)
+    close =data[1]
+    open=data[0]
+    high=data[2]
+    low=data[3]
+    vol=data[4]
+
+    data =np.array(close)
     macd = Macd(data, 6, 12, 3).values
     stoch_rsi = StochRsi(data, period=14).hist_values
     dpo = Dpo(data, period=4).values
     cop = Coppock(data, wma_pd=10, roc_long=6, roc_short=3).values
-    inter_slope = PolyInter(data, progress_bar=True).values
-
+    #inter_slope = PolyInter(data, progress_bar=True).values
+    d =pd.DataFrame(data)
+    boll = BollingerBands(close=d[0])
+    boll_h = boll.bollinger_hband_indicator()
+    boll_l = boll.bollinger_lband_indicator()
     X_val = np.array([macd,
                  stoch_rsi,
-               inter_slope,
+               #inter_slope,
+                      open,
+                      high,
+                      low,
+                      close,
+                      vol,
+                      boll_h,
+                      boll_l,
                        dpo,
                        cop])
 
@@ -125,24 +163,34 @@ def adjust_data(X, y, split=0.8):
     X, y = X[shuffle_index], y[shuffle_index]
 
     # find indexes of each label
-    idx_1 = np.argwhere(y == 1).flatten()
-    idx_0 = np.argwhere(y == 0).flatten()
+    #idx_1 = np.argwhere(y == 1).flatten()
+    #idx_0 = np.argwhere(y == 0).flatten()
 
     # grab specified cut of each label put them together 
-    X_train = np.concatenate((X[idx_1[:train_idx]], X[idx_0[:train_idx]]), axis=0)
-    X_test = np.concatenate((X[idx_1[train_idx:cut]], X[idx_0[train_idx:cut]]), axis=0)
-    y_train = np.concatenate((y[idx_1[:train_idx]], y[idx_0[:train_idx]]), axis=0)
-    y_test = np.concatenate((y[idx_1[train_idx:cut]], y[idx_0[train_idx:cut]]), axis=0)
+    #X_train = np.concatenate((X[idx_1[:train_idx]], X[idx_0[:train_idx]]), axis=0)
+    #X_test = np.concatenate((X[idx_1[train_idx:cut]], X[idx_0[train_idx:cut]]), axis=0)
+    #y_train = np.concatenate((y[idx_1[:train_idx]], y[idx_0[:train_idx]]), axis=0)
+    #y_test = np.concatenate((y[idx_1[train_idx:cut]], y[idx_0[train_idx:cut]]), axis=0)
 
     # shuffle again to mix labels
     np.random.seed(7)
-    shuffle_train = np.random.permutation(X_train.shape[0])
-    shuffle_test = np.random.permutation(X_test.shape[0])
+    #shuffle_train = np.random.permutation(X_train.shape[0])
+    #shuffle_test = np.random.permutation(X_test.shape[0])
+    skf = StratifiedKFold(n_splits=2, shuffle=True)
+    for index, (train_indices, val_indices) in enumerate(skf.split(X, y)):
+        print
+        "Training on fold " + str(index + 1) + "/10..."
+        # Generate batches from indices
+        xtrain, xval = X[train_indices], X[val_indices]
+        ytrain, yval = y[train_indices], y[val_indices]
+        ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
+        model = None
+        model = build_model()
+        model.fit(xtrain, ytrain, epochs=20, batch_size=16, shuffle=True, validation_data=(xval, yval))
+        model.save(f'models/lstm_model{index}.h5')
+    #X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
+    #X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
 
-    X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
-    X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
-
-    return X_train, X_test, y_train, y_test
 
 def shape_data(X, y, timesteps=10):
     # scale data
@@ -189,10 +237,11 @@ def strategy_bench(y_pred, start, thresl=0.6, thress=0.1,verb=False):
 
     start_balance=1000
     start_short_balance = 1000
-    short_balance=start_short_balance
+    short_balance=0
     balance = start_balance
     profit_long=[]
     leftover=0
+    short_leftover=0
     profit_short=[]
     long_value=0
     short_value=0
@@ -205,93 +254,111 @@ def strategy_bench(y_pred, start, thresl=0.6, thress=0.1,verb=False):
     holding=[]
    # for i in range(self.window):
      #   holding.append(0)
-    for i in range(start+1,start+len(y_pred)):#self.window-1,candles.shape[0]-1):
+    for i in range(start,start+len(y_pred)):#self.window-1,candles.shape[0]-1):
         #self.savgol = self.apply_filter(deriv=0, hist=candles.iloc[:i + 1]['mean'])
         #self.savgol_deriv = self.apply_filter(deriv=1, hist=candles.iloc[:i + 1]['mean'])
         #####long#####
         if balance>0 and amount==0 and position ==0 and y_pred[i-start]>0:# self.savgol_deriv[i]>thresl:
             ##open long
-            long_value=start_balance
-            amount = start_balance*(1-fee)/candles.iloc[i-1]['open']
+            long_value=start_balance#modey spent on long pos
+            amount = start_balance*(1-fee)/candles.iloc[i][0]#amount available after opening long position
             balance = 0
             position = 1
             holding.append(1)
-            if verb: print('long at'+str(candles.iloc[i-1]['Date'])+'for '+ str(candles.iloc[i-1]['open']))
+            if verb: print('long at '+str(candles.iloc[i][6])+' for '+ str(candles.iloc[i][0]))
 
         else:
               ##close long
-            if  amount>0 and position==1 and y_pred[i-start]<0:#self.savgol_deriv[i]<thress and
-                profit_long.append(((1-fee)*amount*candles.iloc[i-1]['open']-long_value)/long_value)
-                leftover += (1-fee)*amount*candles.iloc[i-1]['open']-start_balance
+            if  amount>0 and position==1 and balance==0 and y_pred[i-start]<0:#self.savgol_deriv[i]<thress and
+                profit_long.append(((1-fee)*amount*candles.iloc[i][0]-long_value)/long_value)
+                leftover += (1-fee)*amount*candles.iloc[i][0]-start_balance
                 trades+=1
                 balance=start_balance
                 amount = 0
                 position = 0
                 holding.append(0)
-                if verb: print('short at' + str(candles.iloc[i-1]['Date']) + 'for ' + str(candles.iloc[i-1]['open']))
+                if verb: print('short at ' + str(candles.iloc[i][6]) + ' for ' + str(candles.iloc[i][0]))
             #####short#####
             else:
                 #open short
 
-                if position==0  and y_pred[i-start]<0:#self.savgol_deriv[i]<0-thress:
+                if position==0  and amount ==0 and amount_short==0 and y_pred[i-start]<0:#self.savgol_deriv[i]<0-thress:
                     position=-1
-                    amount_short=short_balance/candles.iloc[i-1]['open']
-                    short_value = (1 - fee) * amount_short * candles.iloc[i-1]['open']
+                    amount_short=start_short_balance*(1 - fee)/candles.iloc[i][0]# how much was sold
+                    short_value = amount_short * candles.iloc[i][0]#how much we got for selling
                     holding.append(-1)
+                    if verb: print('short at ' + str(candles.iloc[i][6]) + ' for ' + str(candles.iloc[i][0]))
+                    #short_balance=0
                 else: #close short
-                    if position==-1 and y_pred[i-start]>0:#
+                    if position == - 1 and y_pred[i-start]>0 and amount ==0 and amount_short>0:#
                         position = 0
-                        short_balance+=short_value-(1 + fee) * amount_short * candles.iloc[i-1]['open']
-                        profit_short.append((short_value-(1 + fee) * amount_short * candles.iloc[i-1]['open'])/short_value)
-
+                        short_leftover += short_value-(1 + fee) * amount_short * candles.iloc[i][0]
+                        profit_short.append((short_value-(1 + fee) * amount_short * candles.iloc[i][0])/start_short_balance)
+                        amount_short = 0
+                       # short_balance=start_short_balance
                         holding.append(0)
-                        trades_short+=1
-
+                        trades_short += 1
+                        if verb: print('long at ' + str(candles.iloc[i][6]) + ' for ' + str(candles.iloc[i][0]))
                     else:
                         holding.append(position)
         #self.savgol = self.apply_filter(deriv=0, hist=candles.iloc[:i + 3]['mean'])
         #self.savgol_deriv = self.apply_filter(deriv=1, hist=candles.iloc[:i + 3]['mean'])
 
 
-    if verb: print('balance',balance,'amount',amount,'trades',trades,'trades_short ',trades_short)
-    result = (leftover+amount*candles.iloc[candles.shape[0]-1]['close'])/start_balance
-    result_short = (short_balance + amount_short * candles.iloc[candles.shape[0] - 1]['close']) / start_short_balance
-    print('threshhold',thresl,'trades long',trades,',trades_short', trades_short)
+    #if verb: print('balance ',balance,' amount ',amount,' amount short ',amount_short,' trades ',trades,' trades_short ',trades_short)
+    result = ((balance+leftover+amount*(1-fee)*candles[1][candles.shape[0]-1])/start_balance)-1
+    if amount_short > 0:
+        short_leftover += start_short_balance - amount_short * (1+fee)*candles[1][candles.shape[0]-1]
+    result_short = short_leftover/start_short_balance
+    if verb:
+        if amount>0:
+            print('liqudating long at  ' + str(candles[2][candles.shape[0]-1]))
+        if amount_short>0:
+            print('liqudating short at  ' + str(candles[2][candles.shape[0]-1]))
+    #print('threshhold',thresl,'trades long',trades,',trades_short', trades_short)
     #print('result_long %.2f avg  long %.2f result_short %.2f avg  short %.2f'%(result,statistics.mean(profit_long),result_short,statistics.mean(profit_short)))
-    trace1 = px.histogram(profit_long,nbins=400)
+    trace1 = px.histogram(profit_long, nbins=400, title='longs')
     #print(profit_long)
-    trace2 = px.histogram(profit_short,nbins=400)
+    trace2 = px.histogram(profit_short, nbins=400, title='shorts')
     #fig=go.Figure(data=[trace1,trace2])
     prof=0
     for p in profit_long:
         if p>0:
             prof+=1
-
-    print('winrate long ' + str(prof/len(profit_long)))
+    if len(profit_long) > 0:
+        pass#print('winrate long ' + str(prof/len(profit_long)))
     prof = 0
     for p in profit_short:
         if p > 0:
             prof += 1
-
-    print('winrate short ' +str(prof / len(profit_short)))
-    trace1.show()
-    return result, holding
+    if len(profit_short)>0:
+         pass#print('winrate short ' + str(prof / len(profit_short)))
+    #trace1.show()
+    trace2.show()
+    def sign(a):
+        if a>0:
+            return '+'
+        else: return''
+    #result = f'long {sign(result)} {result*100:.2f}%, short {sign(result_short)}{result_short*100:.2f}%'
+    #print(result)
+    return result,result_short, holding
 if __name__ == '__main__':
-    start = '20 Mar 2022'
+    start = '20 Mar 2023'
     end = '25 Mar 2024'
 
     #with open('historical_data/hist_data.json') as f:
       #  data = json.load(f)
     load_data = False
     train = False
-    predict = True
+    predict = False
     bench = True
     # load and reshape data
     validation_length = 1000
-    validation_lag = 60
+    validation_lag = 30
+    timesteps = 10
     if load_data:
         candles = get_data_files(start, end, 60)
-        X, labels = extract_tt_data(candles['mean'], validation_length=validation_length)
+        X, labels = extract_tt_data(candles, validation_length=validation_length)
         y = labels[31:1 - validation_length]
         y_val = labels[-validation_length:]
         np.save('candles', candles, allow_pickle=True)
@@ -299,66 +366,116 @@ if __name__ == '__main__':
         np.save('y', y, allow_pickle=True)
         np.save('y_val', y, allow_pickle=True)
 
-    else:
-        X, y,y_val,candles = np.load('X.npy',allow_pickle=True),np.load('y.npy',allow_pickle=True),\
-            np.load('y_val.npy',allow_pickle=True),np.load('candles.npy',allow_pickle=True)
-    X, y = shape_data(X, y, timesteps=10)
 
-    # ensure equal number of labels, shuffle, and split
-    X_train, X_test, y_train, y_test = adjust_data(X, y)
-    
-    # binary encode for softmax function
-    y_train, y_test = to_categorical(y_train, 2), to_categorical(y_test, 2)
-
-    # build and train model
+    X, y,y_val,candles = np.load('X.npy',allow_pickle=True),np.load('y.npy',allow_pickle=True),\
+        np.load('y_val.npy',allow_pickle=True),np.load('candles.npy',allow_pickle=True)
+    X, y = shape_data(X, y, timesteps=timesteps)
     if train:
-        model = build_model()
-        model.fit(X_train, y_train, epochs=20, batch_size=32, shuffle=True, validation_data=(X_test, y_test))
-        model.save('models/lstm_model.h5')
-    else:
-        model = load_model('models/lstm_model.h5')
+    # ensure equal number of labels, shuffle, and split
+        adjust_data(X, y)
+
+
+
     candles = pd.DataFrame(candles)
+    #print(model.summary())
     if predict:
-        for i in range(validation_length - validation_lag - 10):
-            X_val = build_val_data(data=candles[-validation_length+i:-validation_length+validation_lag+i][4])
+        y_val = to_categorical(y_val, 2)
+        y_pred = []
+        model = load_model(f'models/lstm_model1.h5')
+        for i in range(validation_length - validation_lag - 2*timesteps):
+            X_val = build_val_data(data=candles.iloc[-validation_length+i:-validation_length+validation_lag+i+timesteps])
 
-            y_val = to_categorical(y_val, 2)
-            X_val, y_val = shape_data(X_val[-validation_lag:], y_val, timesteps=10)
-            y_pred=[]
 
-            X_val_s = np.expand_dims(X_val[i], axis=1)
-            preds = model.predict(X_val_s)
-            if i==0:
-                for p in preds:
-                    y_pred.append(p)
+            X_val, _ = shape_data(X_val[validation_lag:], y_val, timesteps=timesteps)
+            y_strat = []
+            for i in range(1):
+
+                #X_val_s = np.expand_dims(X_val[i], axis=1)
+
+                preds = model.predict(X_val)
+
+                y_strat.append(preds[0][0])
+            y_pred.append(statistics.mean(y_strat))
+
+
+
+
+
+        np.save("predictions", y_pred, allow_pickle=True)
+
+    preds = []
+    y_pred = np.load("predictions.npy", allow_pickle=True)
+    #for p in y_pred:
+     #   preds.append(p[0])
+    #y_pred=preds
+    #k =y_pred[1]
+    l =len(y_pred)
+    for i in range(l):
+
+        if y_pred[i] < 0.49:
+            y_pred[i] = 1
+
+        else:
+            if y_pred[i] > 0.51:
+                y_pred[i] = -1
             else:
-                y_pred.append(preds[-1])
+                y_pred[i] = 0
+        #y_pred = np.array(y_pred)
+        #y_pred = y_pred.transpose()
+        #np.save("predictions", y_pred,allow_pickle=True)
 
 
-        for i in range(len(y_pred)):
-            if y_pred[i][0] < 0.45:
-                y_pred[i][0] = 1
-            else:
-                if y_pred[i][0] > 0.55:y_pred[i][0] = -1
-                else: y_pred[i][0] =0
-        y_pred = np.array(y_pred)
-        y_pred = y_pred.transpose()
-        np.save("predictions", y_pred,allow_pickle=True)
+    sh_len=[]
+    lo_len=[]
+    lo_trend=False
+    hi_trend=False
+    counter=0
+    mas=[]
+    mas.append(y_pred[0])
+    for i in range(1,len(y_pred)):#counting average holding time
+        if mas[-1]>0 and y_pred[i]>0:
+            mas[-1]+=1
+        elif mas[-1]<0 and y_pred[i]<0:
+            mas[-1] -= 1
+        else: mas.append(y_pred[i])
 
-    else:
-        y_pred = np.load("predictions.npy")
-    #
-
+    pos,neg=[],[]
+    for m in mas:
+        if m>0:
+            pos.append(m)
+        elif m<0:
+            neg.append(m)
+    print(f'long {np.mean(pos)} short {np.mean(neg)}')
     #y_test_trade = y_pred.reshape(y_pred.shape[1],y_pred.shape[0])
     if bench:
-        start =candles.shape[0] - validation_length
-        print(strategy_bench(y_pred=y_pred[0], start = start)[0])
-        holding=strategy_bench(y_pred=y_pred[0], start=start)[1]
-        np.save("holding", holding,allow_pickle=True)
-        start = len(candles['mean']) - 200
-        np.save("start", [start],allow_pickle=True)
+        start = candles.shape[0] - validation_length + validation_lag + timesteps
+        #candles=candles.transpose(copy=True)
+        res=[]
+        res_s=[]
+        def random_guess():
+            for j in range(500):
+                for i in range(0,len(y_pred),6):
+
+
+                        n = np.random.random_integers(low=-1, high=1)
+                        for j in range(6):
+                            if i+j<len(y_pred):
+                                y_pred[j+i] = n
+
+
+                a,b, holding = strategy_bench(y_pred=y_pred, start=start,verb=False)
+                res.append(a)
+                res_s.append(b)
+            print('mean ',np.mean(res),'mean s',np.mean(res_s))
+
+
+        random_guess()
+        #_,__, holding = strategy_bench(y_pred=y_pred, start=start, verb=False)
+       # np.save("holding", holding, allow_pickle=True)
+        start = len(candles[4]) - 200
+        np.save("start", [start], allow_pickle=True)
     else:
 
         holding = np.load("holding.npy")
         start = np.load("start.npy")[0]
-    graph(candles=candles, holding=holding, start=start)
+    #graph(candles=candles, holding=holding, start=start)
