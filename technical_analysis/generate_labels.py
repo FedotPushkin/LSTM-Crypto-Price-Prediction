@@ -21,7 +21,7 @@ class Genlabels(object):
             sys.exit('Error: {0}'.format(error))   
 
         # load historic data from file
-        self.hist = data# это лист из средней цены между пеном и клоузом
+        self.hist = data['close']# это лист из средней цены между опеном и клоузом
         self.candles = data# здесь долженбыть датафрейм а не лист
         self.window = window
         self.polyorder = polyorder
@@ -41,10 +41,17 @@ class Genlabels(object):
     def cont_to_disc(self):
         # encode label as binary (up/down)
         label = []
-        for value in self.savgol_deriv:
-            if value >= 0: label.append(1)
-            else: label.append(0)
-        
+        ##for value in self.savgol_deriv:
+           # if value >= 0: label.append(1)
+            #else: label.append(0)
+        ct = self.candles.T
+        for i in range(ct.shape[1]):
+            if ct[i]['open'] < ct[i]['close']:
+                label.append(1)
+            else:
+                label.append(0)
+
+
         return np.array(label)
 
 
