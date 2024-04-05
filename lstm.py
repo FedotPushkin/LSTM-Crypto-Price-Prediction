@@ -37,22 +37,23 @@ from get_data import get_data_files
 def graph(x_g, hold_g, start_g, len_g, col_type):
 
     def min_g(a, b):
-        c = list()
-        for i in range(len(a)):
-            c.append(min(a[i], b[i]))
-        return c
+        temp = list()
+        for mn in range(len(a)):
+            temp.append(min(a[mn], b[mn]))
+        return temp
+
     def max_g(a, b):
-        c = list()
-        for i in range(len(a)):
-            c.append(min(a[i], b[i]))
-        return c
+        temp = list()
+        for mx in range(len(a)):
+            temp.append(min(a[mx], b[mx]))
+        return temp
     cand_g = pd.DataFrame(candles).iloc[start_g:start_g+len_g]
     cols = [[0, 1, 2, 3, 4, 5, 6, 7], ['open', 'close', 'high', 'low', 'mean', 'vol', 'Date']]
 
-    #te_g = x_g.T[0]
-    #open_g = x_g.T[4]
-    #close_g = x_g.T[5]
-    bias_x=1
+    # te_g = x_g.T[0]
+    # open_g = x_g.T[4]
+    # close_g = x_g.T[5]
+    bias_x = 1
     if x_g is None:
         trace6 = False
     else:
@@ -66,21 +67,22 @@ def graph(x_g, hold_g, start_g, len_g, col_type):
                             name='candles')
     trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=hold_g, name='holding', mode='lines', )
     if trace6:
-        trace6 = go.Candlestick(x=cand_g[cols[col_type][6]], #x=x_g.T[13][bias_x:len_g],
+        trace6 = go.Candlestick(x=cand_g[cols[col_type][6]],
+                                # x=x_g.T[13][bias_x:len_g],
                                 open=x_g.T[4][bias_x:len_g],
                                 high=max_g(x_g.T[4][bias_x:len_g], x_g.T[5][bias_x:len_g]),
                                 low=min_g(x_g.T[4][bias_x:len_g], x_g.T[5][bias_x:len_g]),
                                 close=x_g.T[5][bias_x:len_g],
                                 name='xtrain')
-        trace1 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[0], name='macd',mode='lines',)
+        # trace1 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[0], name='macd', mode='lines',)
 
         #   trace1 = go.Scatter(x=candles['Date'], y=self.savgol, name='Filter')
         #   trace2 = go.Scatter(x=candles['Date'], y=self.savgol_deriv, name='Derivative', yaxis='y2')
-        trace2 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[1], name='rsi', mode='lines',)
+        #   trace2 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[1], name='rsi', mode='lines',)
 
-        trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[3], name='psar_h', mode='lines', )
-        trace5 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[4], name='psar_l', mode='lines', )
-        data = [trace0, trace1, trace2, trace3]
+        # trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[3], name='psar_h', mode='lines', )
+        # trace5 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[4], name='psar_l', mode='lines', )
+        # data = [trace0, trace1, trace2, trace3]
 
     layout = go.Layout(
         title='Labels',
@@ -97,12 +99,12 @@ def graph(x_g, hold_g, start_g, len_g, col_type):
         )
     )
 
-    #fig2 = go.Figure()#data=data, layout=layout)
+    # fig2 = go.Figure()#data=data, layout=layout)
     fig2 = make_subplots(rows=5, cols=1)
     fig2.add_trace(trace0, row=1, col=1)
-    #fig2.add_trace(trace4, row=1, col=1)
-    #fig2.add_trace(trace5, row=1, col=1)
-    #fig2.add_trace(trace6, row=3, col=1)
+    # fig2.add_trace(trace4, row=1, col=1)
+    # fig2.add_trace(trace5, row=1, col=1)
+    # fig2.add_trace(trace6, row=3, col=1)
     if trace6:
         fig2.add_trace(trace6, row=3, col=1)
     fig2.add_trace(trace3, row=5, col=1)
@@ -115,6 +117,7 @@ def graph(x_g, hold_g, start_g, len_g, col_type):
 def plothistories(histories, y_pred_p, yval_p):
     for history in histories:
         # summarize history for accuracy
+        plt.figure(1)
         plt.plot(history.history['accuracy'])
         plt.plot(history.history['val_accuracy'])
         plt.title('model accuracy')
@@ -123,6 +126,7 @@ def plothistories(histories, y_pred_p, yval_p):
         plt.legend(['train', 'test'], loc='upper left')
         plt.show()
         # summarize history for loss
+        plt.figure(2)
         plt.plot(history.history['loss'])
         plt.plot(history.history['val_loss'])
         plt.title('model loss')
@@ -135,7 +139,7 @@ def plothistories(histories, y_pred_p, yval_p):
 
         auc_keras = auc(fpr_keras, tpr_keras)
 
-        plt.figure(1)
+        plt.figure(3)
         plt.plot([0, 1], [0, 1], 'k--')
         plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
         plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
@@ -144,6 +148,8 @@ def plothistories(histories, y_pred_p, yval_p):
         plt.title('ROC curve')
         plt.legend(loc='best')
         plt.show()
+
+
 def build_tt_data(data):
     # obtain labels
 
@@ -151,7 +157,7 @@ def build_tt_data(data):
     lo = data.iloc[:-validation_length]['low']
     hi = data.iloc[:-validation_length]['high']
     cl = data.iloc[:-validation_length]['close']
-    date = data.iloc[:-validation_length]['Date']
+    # date = data.iloc[:-validation_length]['Date']
     #   vol = data.iloc[:-validation_length]['vol']
     # obtain features
     macd = Macd(cl, 6, 12, 3).values
@@ -174,10 +180,10 @@ def build_tt_data(data):
     sar_d = psar.psar_down()
     sar_u = psar.psar_up()
     nan_indices = np.isnan(sar_d)
-    for i in range(len(nan_indices)):
-        if nan_indices[i]:
-            sar_d[i] = sar_u[i]
-        sar_d[i] = (sar_d[i]-cl[i])/cl[i]
+    for ni in range(len(nan_indices)):
+        if nan_indices[ni]:
+            sar_d[ni] = sar_u[ni]
+        sar_d[ni] = (sar_d[ni]-cl[ni])/cl[ni]
     # truncate bad values and shift label
     xe = np.array([macd,
                    stoch_rsi,
@@ -278,21 +284,23 @@ def shuffle_and_train(x_adj, y_adj):
     shuffle_0 = np.random.permutation(len(idx_0))
     minlen = min(len(idx_1), len(idx_0))
     if len(idx_1) > len(idx_0):
-        idx_1 = idx_1[shuffle_0]
+       idx_1 = idx_1[shuffle_0]
     else:
-        idx_0 = idx_0[shuffle_1]
-    #shuffle_index = np.random.permutation(minlen)
+       idx_0 = idx_0[shuffle_1]
+    # shuffle_index = np.random.permutation(minlen)
 
-    # grab specified cut of each label put them together 
+    # grab specified cut of each label put them together
     x_adj = np.concatenate((x_adj[idx_1[:minlen]], x_adj[idx_0[:minlen]]), axis=0)
-    #X_test = np.concatenate((x_adj[idx_1[train_idx:cut]], x_adj[idx_0[train_idx:cut]]), axis=0)
-    y_adj = np.concatenate((y_adj[idx_1[:minlen]], y[idx_0[:minlen]]), axis=0)
-    #y_test = np.concatenate((y_adj[idx_1[train_idx:cut]], y_adj[idx_0[train_idx:cut]]), axis=0)
+    # X_test = np.concatenate((x_adj[idx_1[train_idx:cut]], x_adj[idx_0[train_idx:cut]]), axis=0)
+    y_adj = np.concatenate((y_adj[idx_1[:minlen]], y_adj[idx_0[:minlen]]), axis=0)
+    # y_test = np.concatenate((y_adj[idx_1[train_idx:cut]], y_adj[idx_0[train_idx:cut]]), axis=0)
 
     # shuffle again to mix labels
     np.random.seed(42)
     shuffle_index = np.random.permutation(x_adj.shape[0])
     x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
+    bal = Counter(y_adj)
+    print(bal.most_common(2))
     skf = StratifiedKFold(n_splits=5, shuffle=True)
     for index, (train_indices, val_indices) in enumerate(skf.split(x_adj, y_adj)):
         print("Training on fold " + str(index + 1) + "/5...")
@@ -301,12 +309,13 @@ def shuffle_and_train(x_adj, y_adj):
             xtrain, xval = x_adj[train_indices], x_adj[val_indices]
             ytrain, yval = y_adj[train_indices], y_adj[val_indices]
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
-            #graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
+            # graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
             model = build_model()
+
             history = model.fit(xtrain, ytrain, epochs=25, batch_size=32, shuffle=True, validation_data=(xval, yval))
             model.save(f'models/lstm_model{index}.h5')
-        #y_pred_p = model.predict(xval)
-        #plothistories(history, y_pred_p, yval)
+    y_pred_p = model.predict(xval)
+    plothistories([history], y_pred_p, yval)
 
     #   X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
     #   X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
@@ -318,7 +327,7 @@ def shape_data(x_s, y_s, training):
         scaler = StandardScaler()
     else:
         scaler = joblib.load('models/scaler.dump')
-    #x_s = scaler.fit_transform(x_s)
+    x_s = scaler.fit_transform(x_s)
     if training:
         if not os.path.exists('models'):
             os.mkdir('models')
@@ -327,8 +336,8 @@ def shape_data(x_s, y_s, training):
     reshaped = []
     for t in range(timesteps, x_s.shape[0]+1):
         onestep = x_s[t - timesteps:t]
-        onestep = scaler.fit_transform(onestep)
-        #normalise(onestep)
+        #onestep = scaler.fit_transform(onestep)
+        onestep = normalise(onestep)
         reshaped.append(onestep)
 
     # account for data lost in reshaping
@@ -338,23 +347,26 @@ def shape_data(x_s, y_s, training):
     y_t = np.append(y_t, np.random.randint(0, 1+1))
     return x_s, y_t
 
+
 def normalise(x_n):
     x_n = x_n.T
-    cols_for_norm = {4, 5, 6, 8}
+    cols_for_norm = {3, 4}#, 5, 7}
     for vert in range(x_n.shape[0]):
         if vert in cols_for_norm:
 
             x_n = x_n/x_n[vert][0]
-    x_n =  x_n.T
+    return x_n.T
+
+
 def build_model():
     # first layer
     model = Sequential()
     model.add(LSTM(32, input_shape=(X.shape[1], X.shape[2]), return_sequences=True))
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.15))
 
     # second layer
     model.add(LSTM(64, return_sequences=False))
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.15))
 
     # fourth layer and output
     model.add(Dense(32, activation='relu'))
@@ -464,14 +476,14 @@ def strategy_bench(preds, start_pos, verb=False):
     for g in range(len(preds)):
         if preds[g] == y_real[g][0]:
             guessed_right += 1
-        #diffs.append(abs(preds[g]-y_real[g]))
+        # diffs.append(abs(preds[g]-y_real[g]))
     print(f'guessed right {(100*guessed_right/len(preds)):.2f}%')
     #   print('threshhold',thresl,'trades long',trades,',trades_short', trades_short)
     #   print('result_long %.2f avg  long %.2f result_short %.2f avg  short %.2f'%
     #   (result,statistics.mean(profit_long),result_short,statistics.mean(profit_short)))
     trace1 = px.histogram(profit_long, nbins=400, title='longs')
     #   print(profit_long)
-    trace2 = px.histogram(profit_short, nbins=400, title='shorts')
+    # trace2 = px.histogram(profit_short, nbins=400, title='shorts')
     trace3 = px.histogram(diffs, nbins=50, title='diffs')
     #   fig=go.Figure(data=[trace1,trace2])
     prof = 0
@@ -488,7 +500,7 @@ def strategy_bench(preds, start_pos, verb=False):
     if len(profit_short) > 0:
         pass
         #  print('winrate short ' + str(prof / len(profit_short)))
-    # trace1.show()
+    trace1.show()
     # trace2.show()
     trace3.show()
 
@@ -520,7 +532,7 @@ def random_guess(length):
 
 
 if __name__ == '__main__':
-    start = '20 Jan 2023'
+    start = '20 Jan 2018'
     end = '25 Mar 2024'
     load_data = True
     train = True
@@ -537,7 +549,7 @@ if __name__ == '__main__':
         print(c.most_common(2))
 
         y = labels[31:1 - validation_length]
-       # graph(X, start_g=31, hold_g=y, len_g=100, col_type=1)
+        #graph(X, start_g=31, hold_g=y, len_g=100, col_type=1)
         y_val = labels[-validation_length:]
         np.save('candles', candles, allow_pickle=True)
         np.save('X', X, allow_pickle=True)
@@ -563,7 +575,7 @@ if __name__ == '__main__':
             for v in range(validation_length - validation_lag - 2*timesteps):
                 val_input = candles.iloc[-validation_length+v:-validation_length+v+validation_lag+timesteps]
                 X_val = build_val_data(data=val_input)
-                #graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
+                # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
                 X_val, _ = shape_data(X_val, y_val, training=False)
 
                 y_strat[models].append(lstm.predict(X_val)[0][0])
@@ -571,13 +583,13 @@ if __name__ == '__main__':
 
     y_pred = []
     y_strat = np.load("y_strat.npy",  allow_pickle=True)
-    for i in range(len(y_strat[0])):
-        vec = y_strat.T[i]
+    for col in range(len(y_strat[0])):
+        vec = y_strat.T[col]
         y_pred.append(statistics.mean(vec))
-    #np.save("predictions", y_pred, allow_pickle=True)
+    # np.save("predictions", y_pred, allow_pickle=True)
 
     #   preds = list()
-    #y_pred = np.load("predictions.npy", allow_pickle=True)
+    # y_pred = np.load("predictions.npy", allow_pickle=True)
     #   for p in y_pred:
     #   preds.append(p[0])
     #   y_pred=preds
