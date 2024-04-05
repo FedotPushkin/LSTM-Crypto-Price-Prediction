@@ -36,13 +36,13 @@ class Genlabels(object):
 
     def cont_to_disc(self):
         # encode label as binary (up/down)
-        label = []
-        #  for value in self.savgol_deriv:
-        #    if value >= 0: label.append(1)
-        #   else: label.append(0)
+        label = list()
+        #for value in self.savgol_deriv:
+            #if value >= 0.2: label.append(1)
+           # else: label.append(0)
         ct = self.candles.T
         for c in range(ct.shape[1]):
-            if ct[c]['open'] < ct[c]['close']:
+            if ct[c]['close']/ct[c]['open'] > 1.002 :
                 label.append(1)
             else:
                 label.append(0)
