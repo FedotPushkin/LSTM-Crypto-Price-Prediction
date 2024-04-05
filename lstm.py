@@ -177,7 +177,7 @@ def build_tt_data(data):
     for i in range(len(nan_indices)):
         if nan_indices[i]:
             sar_d[i] = sar_u[i]
-        sar_d[i] = sar_d[i]/cl[i]
+        sar_d[i] = (sar_d[i]-cl[i])/cl[i]
     # truncate bad values and shift label
     xe = np.array([macd,
                    stoch_rsi,
@@ -228,12 +228,12 @@ def build_val_data(data):
     sar_d = psar.psar_down()
     sar_u = psar.psar_up()
     nan_indices = np.isnan(sar_d)
-    gogo=range(nan_indices.index[0], nan_indices.index[0]+len(nan_indices))
+    gogo = range(nan_indices.index[0], nan_indices.index[0]+len(nan_indices))
 
     for ind in gogo:
         if nan_indices[ind]:
             sar_d[ind] = sar_u[ind]
-        sar_d[ind] = sar_d[ind] - cl[ind]
+        sar_d[ind] = (sar_d[ind] - cl[ind])/cl[ind]
     xv = np.array([macd,
                    stoch_rsi,
                    grad_rsi,
@@ -520,13 +520,13 @@ def random_guess(length):
 
 
 if __name__ == '__main__':
-    start = '20 Jan 2020'
+    start = '20 Jan 2023'
     end = '25 Mar 2024'
     load_data = True
     train = True
     predict = True
     bench = True
-    validation_length = 2000
+    validation_length = 1000
     validation_lag = 30
     timesteps = 15
     if load_data:
