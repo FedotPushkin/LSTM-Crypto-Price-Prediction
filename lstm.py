@@ -5,6 +5,7 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 from collections import Counter
 from keras.layers import LSTM, Dense, Dropout
+from keras.callbacks import ModelCheckpoint
 # , TimeDistributed
 from keras.models import Sequential
 from keras.saving import load_model
@@ -26,7 +27,8 @@ from technical_analysis.rsi import StochRsi
 from technical_analysis.dpo import Dpo
 from technical_analysis.coppock import Coppock
 from ta.volatility import BollingerBands
-from ta.trend import PSARIndicator
+from ta.trend import PSARIndicator, AroonIndicator
+from ta.volume import OnBalanceVolumeIndicator
 from ta.momentum import AwesomeOscillatorIndicator
 from get_data import get_data_files
 # from technical_analysis.poly_interpolation import PolyInter
@@ -160,7 +162,7 @@ def build_tt_data(data):
     hi = data.iloc[:-validation_length]['high']
     cl = data.iloc[:-validation_length]['close']
     # date = data.iloc[:-validation_length]['Date']
-    #   vol = data.iloc[:-validation_length]['vol']
+    vol = data.iloc[:-validation_length]['vol']
     # obtain features
     macd = Macd(cl, 6, 12, 3).values
     stoch_rsi = StochRsi(cl, period=14).hist_values
@@ -179,7 +181,11 @@ def build_tt_data(data):
     grad_boll = np.gradient(boll_l, x)
     psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
     awes = AwesomeOscillatorIndicator(hi, lo, window1=5, window2=34).awesome_oscillator()
+    obv = OnBalanceVolumeIndicator(cl,vol).on_balance_volume()
 
+    ar = AroonIndicator(hi,lo, window = 25)
+    aru = ar.aroon_up()
+    ard =  ar.aroon_down()
     sar_d = psar.psar_down()
     sar_u = psar.psar_up()
     sar_di = psar.psar_down_indicator()
@@ -194,20 +200,23 @@ def build_tt_data(data):
                    stoch_rsi,
                    grad_rsi,
                    sar_d,
+                   aru-ard,
+                   #ard,
+                   obv,
                    #sar_di,
                    #sar_ui,
-                   awes,
+                   #awes,
                    # sar_u,
-                  # op,
+                   #op,
                    #   high,
                    #   low,
-                  # cl,
-                   # vol,
-                  # boll_h,
-                  # grad_bolh,
-                   #boll_l,
-                  # grad_boll,
-                   #grad_cop,
+                   #cl,
+                   #vol,
+                  #boll_h,
+                   grad_bolh,
+                  #boll_l,
+                   grad_boll,
+                   grad_cop,
                    #dpo,
                    #cop
                    ])
@@ -223,7 +232,7 @@ def build_val_data(data):
     op = data[0]
     hi = data[2]
     lo = data[3]
-    #   vol = data[4]
+    vol = data[5]
 
     data = np.array(cl)
     macd = Macd(data, 6, 12, 3).values
@@ -244,15 +253,21 @@ def build_val_data(data):
     sar_u = psar.psar_up()
     nan_indices = np.isnan(sar_d)
     gogo = range(nan_indices.index[0], nan_indices.index[0]+len(nan_indices))
+    obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume()
 
+    ar = AroonIndicator(hi, lo, window=25)
+    aru = ar.aroon_up()
+    ard = ar.aroon_down()
     for ind in gogo:
         if nan_indices[ind]:
             sar_d[ind] = sar_u[ind]
         sar_d[ind] = (sar_d[ind] - cl[ind])/cl[ind]
-    xv = np.array([#macd,
+    xv = np.array([macd,
                    stoch_rsi,
                    grad_rsi,
-                   #sar_d,
+                   sar_d,
+                   aru - ard,
+                   obv,
                    # sar_u,
                    #op,
                    #   high,
@@ -260,10 +275,10 @@ def build_val_data(data):
                    #cl,
                    # vol,
                    #boll_h,
-                   #grad_bolh,
+                   grad_bolh,
                    #boll_l,
-                   #grad_boll,
-                   #grad_cop,
+                   grad_boll,
+                   grad_cop,
                    #dpo,
                    #cop
                    ])
@@ -321,8 +336,16 @@ def shuffle_and_train(x_adj, y_adj):
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
             # graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
             model = build_model()
-
-            history = model.fit(xtrain, ytrain, epochs=35, batch_size=32, shuffle=True, validation_data=(xval, yval))
+            checkpoint_filepath = 'checkpoint.weights.h5'
+            model_checkpoint_callback = ModelCheckpoint(
+                filepath=checkpoint_filepath,
+                save_weights_only=True,
+                monitor='val_accuracy',
+                mode='max',
+                save_best_only=True)
+            history = model.fit(xtrain, ytrain, epochs=30, batch_size=32, shuffle=True, validation_data=(xval, yval),
+                                callbacks=[model_checkpoint_callback])
+            model.load_weights(checkpoint_filepath)
             model.save(f'models/lstm_model{index}.h5')
     y_pred_p = model.predict(xval)
     plothistories([history], y_pred_p, yval)
@@ -360,7 +383,7 @@ def shape_data(x_s, y_s, training):
 
 def normalise(x_n):
     x_n = x_n.T
-    cols_for_norm = {3, 4}#, 5, 7}
+    cols_for_norm = {4, 5}#, 5, 7}
     for vert in range(x_n.shape[0]):
         if vert in cols_for_norm:
 
@@ -552,14 +575,16 @@ if __name__ == '__main__':
     validation_lag = 30
     timesteps = 15
     if load_data:
-       # candles = get_data_files(start, end, 60)
+        #candles = get_data_files(start, end, 60)
         cl = np.load("hist_cl.npy")
         op = np.load("hist_op.npy")
         lo = np.load("hist_lo.npy")
         hi = np.load("hist_hi.npy")
         res = np.load("hist_mean.npy")
-        date = np.load('Date.npy')
-        candles = pd.DataFrame({'open': op, 'close': cl, 'high': hi, 'low': lo, 'mean': res, 'Date': date})
+        vol = np.load("vol.npy")
+        date = np.load("Date.npy")
+
+        candles = pd.DataFrame({'open': op, 'close': cl, 'high': hi, 'low': lo, 'mean': res, 'vol': vol, 'Date': date})
         X = build_tt_data(candles)
         labels = Genlabels(candles, window=25, polyorder=3).labels
         c = Counter(labels)
