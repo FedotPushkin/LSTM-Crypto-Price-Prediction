@@ -16,6 +16,7 @@ from keras.utils import to_categorical
 from sklearn.metrics import roc_curve
 import statistics
 import os
+import sys
 import plotly.express as px
 from sklearn.model_selection import StratifiedKFold
 # , cross_val_score
@@ -26,11 +27,12 @@ from technical_analysis.dpo import Dpo
 from technical_analysis.coppock import Coppock
 from ta.volatility import BollingerBands
 from ta.trend import PSARIndicator
+from ta.momentum import AwesomeOscillatorIndicator
 from get_data import get_data_files
 # from technical_analysis.poly_interpolation import PolyInter
 
 # sys.path.append(os.path.join('C:/', 'Users', 'Fedot', 'Downloads', 'LSTM-Crypto-Price-Prediction', 'historical_data'))
-# sys.path.append(os.path.join('historical_data'))
+#sys.path.append(os.path.join('historical_data'))
 # sys.path.append(os.path.join('technical_analysis'))
 
 
@@ -176,9 +178,12 @@ def build_tt_data(data):
     boll_l = boll.bollinger_lband()
     grad_boll = np.gradient(boll_l, x)
     psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
+    awes = AwesomeOscillatorIndicator(hi, lo, window1=5, window2=34).awesome_oscillator()
 
     sar_d = psar.psar_down()
     sar_u = psar.psar_up()
+    sar_di = psar.psar_down_indicator()
+    sar_ui = psar.psar_up_indicator()
     nan_indices = np.isnan(sar_d)
     for ni in range(len(nan_indices)):
         if nan_indices[ni]:
@@ -189,19 +194,23 @@ def build_tt_data(data):
                    stoch_rsi,
                    grad_rsi,
                    sar_d,
+                   #sar_di,
+                   #sar_ui,
+                   awes,
                    # sar_u,
-                   op,
+                  # op,
                    #   high,
                    #   low,
-                   cl,
+                  # cl,
                    # vol,
-                   boll_h,
-                   grad_bolh,
-                   boll_l,
-                   grad_boll,
-                   grad_cop,
-                   dpo,
-                   cop])
+                  # boll_h,
+                  # grad_bolh,
+                   #boll_l,
+                  # grad_boll,
+                   #grad_cop,
+                   #dpo,
+                   #cop
+                   ])
     #   high[30:],
     #   low[30:],
     #   vol[30:],
@@ -240,23 +249,24 @@ def build_val_data(data):
         if nan_indices[ind]:
             sar_d[ind] = sar_u[ind]
         sar_d[ind] = (sar_d[ind] - cl[ind])/cl[ind]
-    xv = np.array([macd,
+    xv = np.array([#macd,
                    stoch_rsi,
                    grad_rsi,
-                   sar_d,
+                   #sar_d,
                    # sar_u,
-                   op,
+                   #op,
                    #   high,
                    #   low,
-                   cl,
+                   #cl,
                    # vol,
-                   boll_h,
-                   grad_bolh,
-                   boll_l,
-                   grad_boll,
-                   grad_cop,
-                   dpo,
-                   cop])
+                   #boll_h,
+                   #grad_bolh,
+                   #boll_l,
+                   #grad_boll,
+                   #grad_cop,
+                   #dpo,
+                   #cop
+                   ])
 
     xv = np.transpose(xv)
     return xv[validation_lag:]
@@ -312,7 +322,7 @@ def shuffle_and_train(x_adj, y_adj):
             # graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
             model = build_model()
 
-            history = model.fit(xtrain, ytrain, epochs=25, batch_size=32, shuffle=True, validation_data=(xval, yval))
+            history = model.fit(xtrain, ytrain, epochs=35, batch_size=32, shuffle=True, validation_data=(xval, yval))
             model.save(f'models/lstm_model{index}.h5')
     y_pred_p = model.predict(xval)
     plothistories([history], y_pred_p, yval)
@@ -337,7 +347,7 @@ def shape_data(x_s, y_s, training):
     for t in range(timesteps, x_s.shape[0]+1):
         onestep = x_s[t - timesteps:t]
         #onestep = scaler.fit_transform(onestep)
-        onestep = normalise(onestep)
+        #onestep = normalise(onestep)
         reshaped.append(onestep)
 
     # account for data lost in reshaping
@@ -361,15 +371,15 @@ def normalise(x_n):
 def build_model():
     # first layer
     model = Sequential()
-    model.add(LSTM(32, input_shape=(X.shape[1], X.shape[2]), return_sequences=True))
+    model.add(LSTM(20, input_shape=(X.shape[1], X.shape[2]), return_sequences=True))
     model.add(Dropout(0.15))
 
     # second layer
-    model.add(LSTM(64, return_sequences=False))
+    model.add(LSTM(40, return_sequences=False))
     model.add(Dropout(0.15))
 
     # fourth layer and output
-    model.add(Dense(32, activation='relu'))
+    model.add(Dense(20, activation='relu'))
     model.add(Dense(2, activation='softmax'))
 
     # compile layers
@@ -542,7 +552,14 @@ if __name__ == '__main__':
     validation_lag = 30
     timesteps = 15
     if load_data:
-        candles = get_data_files(start, end, 60)
+       # candles = get_data_files(start, end, 60)
+        cl = np.load("hist_cl.npy")
+        op = np.load("hist_op.npy")
+        lo = np.load("hist_lo.npy")
+        hi = np.load("hist_hi.npy")
+        res = np.load("hist_mean.npy")
+        date = np.load('Date.npy')
+        candles = pd.DataFrame({'open': op, 'close': cl, 'high': hi, 'low': lo, 'mean': res, 'Date': date})
         X = build_tt_data(candles)
         labels = Genlabels(candles, window=25, polyorder=3).labels
         c = Counter(labels)
