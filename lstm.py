@@ -1,3 +1,4 @@
+import keras.optimizers
 import numpy as np
 import pandas as pd
 import plotly.offline as py
@@ -69,7 +70,9 @@ def graph(x_g, hold_g, start_g, len_g, col_type):
                             low=cand_g[cols[col_type][3]],
                             close=cand_g[cols[col_type][1]],
                             name='candles')
-    trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=hold_g, name='holding', mode='lines', )
+    #trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=hold_g, name='holding', mode='lines', )
+    trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=y_pred_p, name='holding_p', mode='lines', )
+    trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=y_pred_n, name='holding_n', mode='lines', )
     if trace6:
         trace6 = go.Candlestick(x=cand_g[cols[col_type][6]],
                                 # x=x_g.T[13][bias_x:len_g],
@@ -111,8 +114,8 @@ def graph(x_g, hold_g, start_g, len_g, col_type):
     # fig2.add_trace(trace6, row=3, col=1)
     if trace6:
         fig2.add_trace(trace6, row=3, col=1)
-    fig2.add_trace(trace3, row=5, col=1)
-
+    fig2.add_trace(trace3, row=3, col=1)
+    fig2.add_trace(trace4, row=4, col=1)
     # fig2 = go.Figure(data=trace0)#, layout=layout)
     # py.plot(fig1, filename='../docs/label1.html')
     py.plot(fig2, filename='label2.html')
@@ -287,7 +290,7 @@ def build_val_data(data):
     return xv[validation_lag:]
 
 
-def shuffle_and_train(x_adj, y_adj):
+def shuffle_and_train(x_adj, y_adj, tag):
     # count the number of each label
     # count_1 = np.count_nonzero(y_adj)
     # count_0 = y_adj.shape[0] - count_1
@@ -336,17 +339,19 @@ def shuffle_and_train(x_adj, y_adj):
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
             # graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
             model = build_model()
+
             checkpoint_filepath = 'checkpoint.weights.h5'
+            #model.load_weights(checkpoint_filepath)
             model_checkpoint_callback = ModelCheckpoint(
                 filepath=checkpoint_filepath,
                 save_weights_only=True,
                 monitor='val_accuracy',
                 mode='max',
                 save_best_only=True)
-            history = model.fit(xtrain, ytrain, epochs=30, batch_size=32, shuffle=True, validation_data=(xval, yval),
+            history = model.fit(xtrain, ytrain, epochs=25, batch_size=32, shuffle=True, validation_data=(xval, yval),
                                 callbacks=[model_checkpoint_callback])
             model.load_weights(checkpoint_filepath)
-            model.save(f'models/lstm_model{index}.h5')
+            model.save(f'models/lstm_model_{tag}_{index}.h5')
     y_pred_p = model.predict(xval)
     plothistories([history], y_pred_p, yval)
 
@@ -375,9 +380,9 @@ def shape_data(x_s, y_s, training):
 
     # account for data lost in reshaping
     x_s = np.array(reshaped)
-
-    y_t = y_s[timesteps:]
-    y_t = np.append(y_t, np.random.randint(0, 1+1))
+    if training:
+        y_t = y_s[timesteps:]
+        y_t = np.append(y_t, np.random.randint(0, 1+1))
     return x_s, y_t
 
 
@@ -407,7 +412,7 @@ def build_model():
 
     # compile layers
     model.compile(loss='categorical_crossentropy',
-                  optimizer='adam',
+                  optimizer=keras.optimizers.Adam(learning_rate=0.001),
                   metrics=['accuracy'])
 
     return model
@@ -507,7 +512,7 @@ def strategy_bench(preds, start_pos, verb=False):
     guessed_right = 0
     diffs = []
     for g in range(len(preds)):
-        if preds[g] == y_real[g][0]:
+        if preds[g] == y_real[g]:
             guessed_right += 1
         # diffs.append(abs(preds[g]-y_real[g]))
     print(f'guessed right {(100*guessed_right/len(preds)):.2f}%')
@@ -586,48 +591,66 @@ if __name__ == '__main__':
 
         candles = pd.DataFrame({'open': op, 'close': cl, 'high': hi, 'low': lo, 'mean': res, 'vol': vol, 'Date': date})
         X = build_tt_data(candles)
-        labels = Genlabels(candles, window=25, polyorder=3).labels
-        c = Counter(labels)
-        print(c.most_common(2))
-
-        y = labels[31:1 - validation_length]
+        labels_p, labels_n = Genlabels(candles, window=25, polyorder=3).labels
+        cp = Counter(labels_p)
+        cn = Counter(labels_n)
+        print(f'pos {cp.most_common(2)}')
+        print(f'neg {cn.most_common(2)}')
+        y_p = labels_p[31:1 - validation_length]
+        y_n = labels_n[31:1 - validation_length]
         #graph(X, start_g=31, hold_g=y, len_g=100, col_type=1)
-        y_val = labels[-validation_length:]
+        y_val_p = labels_p[-validation_length:]
+        y_val_n = labels_n[-validation_length:]
         np.save('candles', candles, allow_pickle=True)
         np.save('X', X, allow_pickle=True)
-        np.save('y', y, allow_pickle=True)
-        np.save('y_val', y_val, allow_pickle=True)
+        np.save('y', y_p, allow_pickle=True)
+        np.save('y', y_n, allow_pickle=True)
+        np.save('y_val', y_val_p, allow_pickle=True)
+        np.save('y_val', y_val_n, allow_pickle=True)
         np.save('val_labels', [0], allow_pickle=True)
-    X, y, y_val, candles, val_labels = np.load('X.npy', allow_pickle=True), np.load('y.npy', allow_pickle=True), \
-        np.load('y_val.npy', allow_pickle=True), np.load('candles.npy', allow_pickle=True),\
-        np.load('val_labels.npy', allow_pickle=True)
-    X, y = shape_data(X, y, training=True)
+    X, y_p, y_n, y_val_p,y_val_n, candles = np.load('X.npy', allow_pickle=True), np.load('y_p.npy', allow_pickle=True), \
+        np.load('y_n.npy', allow_pickle=True), np.load('y_val_p.npy', allow_pickle=True), \
+        np.load('y_val_n.npy', allow_pickle=True), np.load('candles.npy', allow_pickle=True)
+    xp = X
+    xn = X
+    xp, y_p = shape_data(xp, y_p, training=True)
+    xn, y_n = shape_data(xn, y_n, training=True)
     if train:
         #   ensure equal number of labels, shuffle, and split
-        shuffle_and_train(X, y)
+        shuffle_and_train(xp, y_p, 'pos')
+        shuffle_and_train(xn, y_n, 'neg')
     candles = pd.DataFrame(candles)
     #   print(model.summary())
     if predict:
-        y_val = to_categorical(y_val, 2)
-
+        y_val_p = to_categorical(y_val_p, 2)
+        y_val_n = to_categorical(y_val_n, 2)
         y_strat = []
-        for models in range(1):
-            y_strat.append(list())
-            lstm = load_model(f'models/lstm_model{models}.h5')
-            for v in range(validation_length - validation_lag - 2*timesteps):
-                val_input = candles.iloc[-validation_length+v:-validation_length+v+validation_lag+timesteps]
-                X_val = build_val_data(data=val_input)
-                # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
-                X_val, _ = shape_data(X_val, y_val, training=False)
+        def predict(tag):
+            for models in range(1):
+                y_strat.append(list())
+                lstm = load_model(f'models/lstm_model_{tag}_{models}.h5')
+                for v in range(validation_length - validation_lag - 2*timesteps):
+                    val_input = candles.iloc[-validation_length+v:-validation_length+v+validation_lag+timesteps]
+                    X_val = build_val_data(data=val_input)
+                    # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
+                    X_val, _ = shape_data(X_val, [0], training=False)
 
-                y_strat[models].append(lstm.predict(X_val)[0][0])
-        np.save("y_strat", y_strat, allow_pickle=True)
+                    y_strat[models].append(lstm.predict(X_val)[0][0])
+            np.save(f'y_strat_{tag}', y_strat, allow_pickle=True)
 
+
+        predict('pos')
+        predict('neg')
     y_pred = []
-    y_strat = np.load("y_strat.npy",  allow_pickle=True)
-    for col in range(len(y_strat[0])):
-        vec = y_strat.T[col]
-        y_pred.append(statistics.mean(vec))
+    def getpreds(tag):
+        y_strat = np.load(f'y_strat_{tag}.npy',  allow_pickle=True)
+        for col in range(len(y_strat[0])):
+            vec = y_strat.T[col]
+            y_pred.append(statistics.mean(vec))
+        return y_pred
+
+
+
     # np.save("predictions", y_pred, allow_pickle=True)
 
     #   preds = list()
@@ -637,13 +660,15 @@ if __name__ == '__main__':
     #   y_pred=preds
     #   k =y_pred[1]
     #   y_pred_keras = keras_model.predict(X_test).ravel()
-
-    for v in range(len(y_pred)):
-        if y_pred[v] < 0.5:
-            y_pred[v] = 1
-        else:
-            if y_pred[v] > 0.5:
-                y_pred[v] = 0
+    def binarypreds(pred):
+        for v in range(len(pred)):
+            if pred[v] < 0.4:
+                pred[v] = 1
+            else:
+                if pred[v] > 0.6:
+                    pred[v] = 0
+    y_pred_p = binarypreds(getpreds('pos'))
+    y_pred_n = binarypreds(getpreds('neg'))
             #   else:
             #  y_pred[i] = 0
         #   y_pred = np.array(y_pred)
@@ -652,35 +677,35 @@ if __name__ == '__main__':
     sh_len, lo_len, mas = list(), list(), list()
     lo_trend, hi_trend = False, False
     counter = 0
-    mas.append(y_pred[0])
+    #mas.append(y_pred[0])
     #  counting average holding time
-    for v in range(1, len(y_pred)):
-        if mas[-1] > 0 and y_pred[v] > 0:
-            mas[-1] += 1
-        elif mas[-1] < 0 and y_pred[v] < 0:
-            mas[-1] -= 1
-        else:
-            mas.append(y_pred[v])
+    #for v in range(1, len(y_pred)):
+    #    if mas[-1] > 0 and y_pred[v] > 0:
+     #       mas[-1] += 1
+     #   elif mas[-1] < 0 and y_pred[v] < 0:
+     #       mas[-1] -= 1
+     #   else:
+      #      mas.append(y_pred[v])
 
     pos, neg = list(), list()
     for m in mas:
-        if m > 0:
-            pos.append(m)
-        elif m < 0:
-            neg.append(m)
-    print(f'long {np.mean(pos)} short {np.mean(neg)}')
+        pass#if m > 0:
+        #    pos.append(m)
+       # elif m < 0:
+       #     neg.append(m)
+   # print(f'long {np.mean(pos)} short {np.mean(neg)}')
     #   y_test_trade = y_pred.reshape(y_pred.shape[1],y_pred.shape[0])
     if bench:
         start = candles.shape[0] - validation_length + validation_lag + timesteps
         res = []
         res_s = []
         # random_guess(y_pred)
-        _, __, holding_m = strategy_bench(preds=y_pred, start_pos=start, verb=True)
-        np.save("holding", holding_m, allow_pickle=True)
+        #_, __, holding_m = strategy_bench(preds=y_pred, start_pos=start, verb=True)
+        #np.save("holding", holding_m, allow_pickle=True)
         start = len(candles[4]) - 200
         np.save("start", [start], allow_pickle=True)
     else:
-
+        start = len(candles[6]) - 100
         holding_m = np.load("holding.npy")
         start = np.load("start.npy")[0]
-    graph(x_g=None, hold_g=holding_m, start_g=start, len_g=199, col_type=0)
+    graph(x_g=None, hold_g=[], start_g=start, len_g=199, col_type=0)
