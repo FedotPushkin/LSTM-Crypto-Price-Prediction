@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import plotly.offline as py
 import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+from collections import Counter
 from keras.layers import LSTM, Dense, Dropout
 # , TimeDistributed
 from keras.models import Sequential
@@ -32,100 +34,178 @@ from get_data import get_data_files
 # sys.path.append(os.path.join('technical_analysis'))
 
 
-def graph(x_g, hold_g, start_g):
-    # graph the labels
-    # candles=pd.read_pickle('../historical_data/candles.csv')
+def graph(x_g, hold_g, start_g, len_g, col_type):
 
-    cand_g = candles.iloc[start_g:]
-    # holding = self.strategy_bench(thresl=0.4, thress=0.2 )[1]
+    def min_g(a, b):
+        c = list()
+        for i in range(len(a)):
+            c.append(min(a[i], b[i]))
+        return c
+    def max_g(a, b):
+        c = list()
+        for i in range(len(a)):
+            c.append(min(a[i], b[i]))
+        return c
+    cand_g = pd.DataFrame(candles).iloc[start_g:start_g+len_g]
+    cols = [[0, 1, 2, 3, 4, 5, 6, 7], ['open', 'close', 'high', 'low', 'mean', 'vol', 'Date']]
 
-    trace0 = go.Candlestick(x=cand_g[6],
-                            open=cand_g[0],
-                            high=cand_g[2],
-                            low=cand_g[3],
-                            close=cand_g[1],
-                            )
-    trace1 = go.Scatter(x=cand_g[6], y=x_g[0], name='rsi', yaxis='y')
-    #   trace1 = go.Scatter(x=candles['Date'], y=self.savgol, name='Filter')
-    #   trace2 = go.Scatter(x=candles['Date'], y=self.savgol_deriv, name='Derivative', yaxis='y2')
-    trace3 = go.Scatter(x=cand_g[6], y=hold_g, name='holding', yaxis='y2')
-    data = [trace0, trace1, trace3]
+    #te_g = x_g.T[0]
+    #open_g = x_g.T[4]
+    #close_g = x_g.T[5]
+    bias_x=1
+    if x_g is None:
+        trace6 = False
+    else:
+        trace6 = True
+
+    trace0 = go.Candlestick(x=cand_g[cols[col_type][6]],
+                            open=cand_g[cols[col_type][0]],
+                            high=cand_g[cols[col_type][2]],
+                            low=cand_g[cols[col_type][3]],
+                            close=cand_g[cols[col_type][1]],
+                            name='candles')
+    trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=hold_g, name='holding', mode='lines', )
+    if trace6:
+        trace6 = go.Candlestick(x=cand_g[cols[col_type][6]], #x=x_g.T[13][bias_x:len_g],
+                                open=x_g.T[4][bias_x:len_g],
+                                high=max_g(x_g.T[4][bias_x:len_g], x_g.T[5][bias_x:len_g]),
+                                low=min_g(x_g.T[4][bias_x:len_g], x_g.T[5][bias_x:len_g]),
+                                close=x_g.T[5][bias_x:len_g],
+                                name='xtrain')
+        trace1 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[0], name='macd',mode='lines',)
+
+        #   trace1 = go.Scatter(x=candles['Date'], y=self.savgol, name='Filter')
+        #   trace2 = go.Scatter(x=candles['Date'], y=self.savgol_deriv, name='Derivative', yaxis='y2')
+        trace2 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[1], name='rsi', mode='lines',)
+
+        trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[3], name='psar_h', mode='lines', )
+        trace5 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[4], name='psar_l', mode='lines', )
+        data = [trace0, trace1, trace2, trace3]
 
     layout = go.Layout(
         title='Labels',
         yaxis=dict(
             title='USDT value'
+
         ),
         yaxis2=dict(
-            title='Derivative of Filter',
-            overlaying='y',
-            side='right'
-        )
-        #   yaxis3=dict(
-        #    title='holding',
-        #    overlaying='y',
-        #   side='right'
+            title='rsi',
+        ),
+        yaxis3=dict(
+            title='macd',
 
+        )
     )
 
-    fig2 = go.Figure(data=data, layout=layout)
+    #fig2 = go.Figure()#data=data, layout=layout)
+    fig2 = make_subplots(rows=5, cols=1)
+    fig2.add_trace(trace0, row=1, col=1)
+    #fig2.add_trace(trace4, row=1, col=1)
+    #fig2.add_trace(trace5, row=1, col=1)
+    #fig2.add_trace(trace6, row=3, col=1)
+    if trace6:
+        fig2.add_trace(trace6, row=3, col=1)
+    fig2.add_trace(trace3, row=5, col=1)
+
     # fig2 = go.Figure(data=trace0)#, layout=layout)
     # py.plot(fig1, filename='../docs/label1.html')
     py.plot(fig2, filename='label2.html')
 
 
-def extract_tt_data(data):
+def plothistories(histories, y_pred_p, yval_p):
+    for history in histories:
+        # summarize history for accuracy
+        plt.plot(history.history['accuracy'])
+        plt.plot(history.history['val_accuracy'])
+        plt.title('model accuracy')
+        plt.ylabel('accuracy')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'test'], loc='upper left')
+        plt.show()
+        # summarize history for loss
+        plt.plot(history.history['loss'])
+        plt.plot(history.history['val_loss'])
+        plt.title('model loss')
+        plt.ylabel('loss')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'test'], loc='upper left')
+        plt.show()
+
+        fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p.T[0], y_pred_p.T[0])
+
+        auc_keras = auc(fpr_keras, tpr_keras)
+
+        plt.figure(1)
+        plt.plot([0, 1], [0, 1], 'k--')
+        plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
+        plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
+        plt.xlabel('False positive rate')
+        plt.ylabel('True positive rate')
+        plt.title('ROC curve')
+        plt.legend(loc='best')
+        plt.show()
+def build_tt_data(data):
     # obtain labels
 
     op = data.iloc[:-validation_length]['open']
-    low = data.iloc[:-validation_length]['low']
-    high = data.iloc[:-validation_length]['high']
-
+    lo = data.iloc[:-validation_length]['low']
+    hi = data.iloc[:-validation_length]['high']
+    cl = data.iloc[:-validation_length]['close']
+    date = data.iloc[:-validation_length]['Date']
     #   vol = data.iloc[:-validation_length]['vol']
-    data = data.iloc[:-validation_length]['close']
     # obtain features
-    macd = Macd(data, 6, 12, 3).values
-    stoch_rsi = StochRsi(data, period=14).hist_values
-    x = list(range(data.shape[0]))
+    macd = Macd(cl, 6, 12, 3).values
+    stoch_rsi = StochRsi(cl, period=14).hist_values
+    x = list(range(cl.shape[0]))
     grad_rsi = np.gradient(stoch_rsi, x)
-    dpo = Dpo(data, period=4).values
-    cop = Coppock(data, wma_pd=10, roc_long=6, roc_short=3).values
-    grad_cop = np.gradient(cop, list(range(data.shape[0])))
-    #   inter_slope = PolyInter(data, progress_bar=True).values
-    d = pd.DataFrame(data)
-    boll = BollingerBands(close=d['close'])
-    boll_h = boll.bollinger_hband_indicator()
-    grad_bolh = np.gradient(boll_h, list(range(data.shape[0])))
-    boll_l = boll.bollinger_lband_indicator()
-    grad_boll = np.gradient(boll_l, list(range(data.shape[0])))
-    psar = PSARIndicator(high, low, data, step=0.02, max_step=0.2, fillna=False)
-    sar_d = psar.psar_down_indicator()
-    sar_u = psar.psar_up_indicator()
+    dpo = Dpo(cl, period=4).values
+    cop = Coppock(cl, wma_pd=10, roc_long=6, roc_short=3).values
+    # x_grad = list(range(data.shape[0]-validation_length))
+    grad_cop = np.gradient(cop, x)
+    #   inter_slope = PolyInter(cl, progress_bar=True).values
+    # d =pd.DataFrame(cl)['close']
+    boll = BollingerBands(close=cl)
+    boll_h = boll.bollinger_hband()
+    grad_bolh = np.gradient(boll_h, x)
+    boll_l = boll.bollinger_lband()
+    grad_boll = np.gradient(boll_l, x)
+    psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
+
+    sar_d = psar.psar_down()
+    sar_u = psar.psar_up()
+    nan_indices = np.isnan(sar_d)
+    for i in range(len(nan_indices)):
+        if nan_indices[i]:
+            sar_d[i] = sar_u[i]
+        sar_d[i] = sar_d[i]/cl[i]
     # truncate bad values and shift label
-    xe = np.array([macd[30:],
-                  stoch_rsi[30:],
-                  grad_rsi[30:],
-                  sar_d[30:],
-                  sar_u[30:],
-                  op[30:],
-                  data[30:],
-                  boll_h[30:],
-                  grad_bolh[30:],
-                  boll_l[30:],
-                  grad_boll[30:],
-                  grad_cop[30:],
-                  dpo[30:],
-                  cop[30:]])
-#   high[30:],
-#   low[30:],
-#   vol[30:],
+    xe = np.array([macd,
+                   stoch_rsi,
+                   grad_rsi,
+                   sar_d,
+                   # sar_u,
+                   op,
+                   #   high,
+                   #   low,
+                   cl,
+                   # vol,
+                   boll_h,
+                   grad_bolh,
+                   boll_l,
+                   grad_boll,
+                   grad_cop,
+                   dpo,
+                   cop])
+    #   high[30:],
+    #   low[30:],
+    #   vol[30:],
     xe = np.transpose(xe)
-    return xe
+    return xe[validation_lag:]
 
 
 def build_val_data(data):
     cl = data[1]
-    # op = data[0]
+    op = data[0]
     hi = data[2]
     lo = data[3]
     #   vol = data[4]
@@ -140,19 +220,26 @@ def build_val_data(data):
     #   inter_slope = PolyInter(data, progress_bar=True).values
     d = pd.DataFrame(data)
     boll = BollingerBands(close=d[0])
-    boll_h = boll.bollinger_hband_indicator()
+    boll_h = boll.bollinger_hband()
     grad_bolh = np.gradient(boll_h, list(range(data.shape[0])))
-    boll_l = boll.bollinger_lband_indicator()
+    boll_l = boll.bollinger_lband()
     grad_boll = np.gradient(boll_l, list(range(data.shape[0])))
     psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
-    sar_d = psar.psar_down_indicator()
-    sar_u = psar.psar_up_indicator()
+    sar_d = psar.psar_down()
+    sar_u = psar.psar_up()
+    nan_indices = np.isnan(sar_d)
+    gogo=range(nan_indices.index[0], nan_indices.index[0]+len(nan_indices))
+
+    for ind in gogo:
+        if nan_indices[ind]:
+            sar_d[ind] = sar_u[ind]
+        sar_d[ind] = sar_d[ind] - cl[ind]
     xv = np.array([macd,
                    stoch_rsi,
                    grad_rsi,
                    sar_d,
-                   sar_u,
-                   open,
+                   # sar_u,
+                   op,
                    #   high,
                    #   low,
                    cl,
@@ -166,10 +253,10 @@ def build_val_data(data):
                    cop])
 
     xv = np.transpose(xv)
-    return xv
+    return xv[validation_lag:]
 
 
-def adjust_data(x_adj, y_adj):
+def shuffle_and_train(x_adj, y_adj):
     # count the number of each label
     # count_1 = np.count_nonzero(y_adj)
     # count_0 = y_adj.shape[0] - count_1
@@ -184,61 +271,43 @@ def adjust_data(x_adj, y_adj):
     x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
 
     # find indexes of each label
-    #   idx_1 = np.argwhere(y == 1).flatten()
-    #   idx_0 = np.argwhere(y == 0).flatten()
+    idx_1 = np.argwhere(y_adj == 1).flatten()
+    idx_0 = np.argwhere(y_adj == 0).flatten()
+
+    shuffle_1 = np.random.permutation(len(idx_1))
+    shuffle_0 = np.random.permutation(len(idx_0))
+    minlen = min(len(idx_1), len(idx_0))
+    if len(idx_1) > len(idx_0):
+        idx_1 = idx_1[shuffle_0]
+    else:
+        idx_0 = idx_0[shuffle_1]
+    #shuffle_index = np.random.permutation(minlen)
 
     # grab specified cut of each label put them together 
-    #   X_train = np.concatenate((X[idx_1[:train_idx]], X[idx_0[:train_idx]]), axis=0)
-    #   X_test = np.concatenate((X[idx_1[train_idx:cut]], X[idx_0[train_idx:cut]]), axis=0)
-    #   y_train = np.concatenate((y[idx_1[:train_idx]], y[idx_0[:train_idx]]), axis=0)
-    #   y_test = np.concatenate((y[idx_1[train_idx:cut]], y[idx_0[train_idx:cut]]), axis=0)
+    x_adj = np.concatenate((x_adj[idx_1[:minlen]], x_adj[idx_0[:minlen]]), axis=0)
+    #X_test = np.concatenate((x_adj[idx_1[train_idx:cut]], x_adj[idx_0[train_idx:cut]]), axis=0)
+    y_adj = np.concatenate((y_adj[idx_1[:minlen]], y[idx_0[:minlen]]), axis=0)
+    #y_test = np.concatenate((y_adj[idx_1[train_idx:cut]], y_adj[idx_0[train_idx:cut]]), axis=0)
 
     # shuffle again to mix labels
-    np.random.seed(7)
-    #   shuffle_train = np.random.permutation(X_train.shape[0])
-    #   shuffle_test = np.random.permutation(X_test.shape[0])
-    skf = StratifiedKFold(n_splits=2, shuffle=True)
+    np.random.seed(42)
+    shuffle_index = np.random.permutation(x_adj.shape[0])
+    x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
+    skf = StratifiedKFold(n_splits=5, shuffle=True)
     for index, (train_indices, val_indices) in enumerate(skf.split(x_adj, y_adj)):
-        print("Training on fold " + str(index + 1) + "/10...")
+        print("Training on fold " + str(index + 1) + "/5...")
         # Generate batches from indices
-        if index == 1:
+        if index == 0:
             xtrain, xval = x_adj[train_indices], x_adj[val_indices]
             ytrain, yval = y_adj[train_indices], y_adj[val_indices]
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
+            #graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
             model = build_model()
             history = model.fit(xtrain, ytrain, epochs=25, batch_size=32, shuffle=True, validation_data=(xval, yval))
             model.save(f'models/lstm_model{index}.h5')
-            # summarize history for accuracy
-            plt.plot(history.history['accuracy'])
-            plt.plot(history.history['val_accuracy'])
-            plt.title('model accuracy')
-            plt.ylabel('accuracy')
-            plt.xlabel('epoch')
-            plt.legend(['train', 'test'], loc='upper left')
-            plt.show()
-            # summarize history for loss
-            plt.plot(history.history['loss'])
-            plt.plot(history.history['val_loss'])
-            plt.title('model loss')
-            plt.ylabel('loss')
-            plt.xlabel('epoch')
-            plt.legend(['train', 'test'], loc='upper left')
-            plt.show()
-            y_pred_keras = model.predict(xval)
-            fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval.T[0], y_pred_keras.T[0])
+        #y_pred_p = model.predict(xval)
+        #plothistories(history, y_pred_p, yval)
 
-            auc_keras = auc(fpr_keras, tpr_keras)
-
-            plt.figure(1)
-            plt.plot([0, 1], [0, 1], 'k--')
-            plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
-            plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
-            plt.xlabel('False positive rate')
-            plt.ylabel('True positive rate')
-            plt.title('ROC curve')
-            plt.legend(loc='best')
-            plt.show()
-            graph(xtrain, hold_g=ytrain, start_g=0)
     #   X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
     #   X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
 
@@ -249,23 +318,34 @@ def shape_data(x_s, y_s, training):
         scaler = StandardScaler()
     else:
         scaler = joblib.load('models/scaler.dump')
-    x_s = scaler.fit_transform(x_s)
+    #x_s = scaler.fit_transform(x_s)
     if training:
         if not os.path.exists('models'):
             os.mkdir('models')
         joblib.dump(scaler, 'models/scaler.dump')
     # reshape data with timesteps
     reshaped = []
-    for t in range(timesteps, x_s.shape[0] + 1):
-        reshaped.append(x_s[t - timesteps:t])
+    for t in range(timesteps, x_s.shape[0]+1):
+        onestep = x_s[t - timesteps:t]
+        onestep = scaler.fit_transform(onestep)
+        #normalise(onestep)
+        reshaped.append(onestep)
 
     # account for data lost in reshaping
     x_s = np.array(reshaped)
-    y_s = y_s[timesteps - 1:]
 
-    return x_s, y_s
+    y_t = y_s[timesteps:]
+    y_t = np.append(y_t, np.random.randint(0, 1+1))
+    return x_s, y_t
 
+def normalise(x_n):
+    x_n = x_n.T
+    cols_for_norm = {4, 5, 6, 8}
+    for vert in range(x_n.shape[0]):
+        if vert in cols_for_norm:
 
+            x_n = x_n/x_n[vert][0]
+    x_n =  x_n.T
 def build_model():
     # first layer
     model = Sequential()
@@ -378,11 +458,13 @@ def strategy_bench(preds, start_pos, verb=False):
             print('liqudating long at  ' + str(candles[2][candles.shape[0]-1]))
         if amount_short > 0:
             print('liqudating short at  ' + str(candles[2][candles.shape[0]-1]))
-    y_real = labels[- validation_length+validation_lag:]
+    y_real = y_val[validation_lag+timesteps:-timesteps]
     guessed_right = 0
+    diffs = []
     for g in range(len(preds)):
-        if preds[g] == y_real[g]:
+        if preds[g] == y_real[g][0]:
             guessed_right += 1
+        #diffs.append(abs(preds[g]-y_real[g]))
     print(f'guessed right {(100*guessed_right/len(preds)):.2f}%')
     #   print('threshhold',thresl,'trades long',trades,',trades_short', trades_short)
     #   print('result_long %.2f avg  long %.2f result_short %.2f avg  short %.2f'%
@@ -390,6 +472,7 @@ def strategy_bench(preds, start_pos, verb=False):
     trace1 = px.histogram(profit_long, nbins=400, title='longs')
     #   print(profit_long)
     trace2 = px.histogram(profit_short, nbins=400, title='shorts')
+    trace3 = px.histogram(diffs, nbins=50, title='diffs')
     #   fig=go.Figure(data=[trace1,trace2])
     prof = 0
     for p in profit_long:
@@ -405,8 +488,9 @@ def strategy_bench(preds, start_pos, verb=False):
     if len(profit_short) > 0:
         pass
         #  print('winrate short ' + str(prof / len(profit_short)))
-    trace1.show()
-    trace2.show()
+    # trace1.show()
+    # trace2.show()
+    trace3.show()
 
     def sign(a):
         if a > 0:
@@ -419,6 +503,7 @@ def strategy_bench(preds, start_pos, verb=False):
 
 
 def random_guess(length):
+    # launches strategybench many times on random long/short orders and shows average result
     y_rand = list()
     for _ in range(500):
         avg_hold_dur = 6
@@ -435,52 +520,64 @@ def random_guess(length):
 
 
 if __name__ == '__main__':
-    start = '20 Mar 2018'
+    start = '20 Jan 2020'
     end = '25 Mar 2024'
     load_data = True
     train = True
     predict = True
     bench = True
     validation_length = 2000
-    validation_lag = 100
+    validation_lag = 30
     timesteps = 15
     if load_data:
         candles = get_data_files(start, end, 60)
-        X = extract_tt_data(candles)
+        X = build_tt_data(candles)
         labels = Genlabels(candles, window=25, polyorder=3).labels
+        c = Counter(labels)
+        print(c.most_common(2))
+
         y = labels[31:1 - validation_length]
+       # graph(X, start_g=31, hold_g=y, len_g=100, col_type=1)
         y_val = labels[-validation_length:]
         np.save('candles', candles, allow_pickle=True)
         np.save('X', X, allow_pickle=True)
         np.save('y', y, allow_pickle=True)
-        np.save('y_val', y, allow_pickle=True)
-        np.save('val_labels', y_val, allow_pickle=True)
+        np.save('y_val', y_val, allow_pickle=True)
+        np.save('val_labels', [0], allow_pickle=True)
     X, y, y_val, candles, val_labels = np.load('X.npy', allow_pickle=True), np.load('y.npy', allow_pickle=True), \
         np.load('y_val.npy', allow_pickle=True), np.load('candles.npy', allow_pickle=True),\
         np.load('val_labels.npy', allow_pickle=True)
     X, y = shape_data(X, y, training=True)
     if train:
         #   ensure equal number of labels, shuffle, and split
-        adjust_data(X, y)
+        shuffle_and_train(X, y)
     candles = pd.DataFrame(candles)
     #   print(model.summary())
     if predict:
         y_val = to_categorical(y_val, 2)
-        y_pred = []
-        lstm = load_model(f'models/lstm_model1.h5')
-        for v in range(validation_length - validation_lag - 2*timesteps):
-            val_input = candles.iloc[-validation_length+v:-validation_length+v+validation_lag+timesteps]
-            X_val = build_val_data(data=val_input)
-            X_val, _ = shape_data(X_val[validation_lag:], y_val, training=False)
-            y_strat = []
-            for _ in range(1):
-                #   X_val_s = np.expand_dims(X_val[i], axis=1)
-                y_strat.append(lstm.predict(X_val)[0][0])
-            y_pred.append(statistics.mean(y_strat))
-        np.save("predictions", y_pred, allow_pickle=True)
+
+        y_strat = []
+        for models in range(1):
+            y_strat.append(list())
+            lstm = load_model(f'models/lstm_model{models}.h5')
+            for v in range(validation_length - validation_lag - 2*timesteps):
+                val_input = candles.iloc[-validation_length+v:-validation_length+v+validation_lag+timesteps]
+                X_val = build_val_data(data=val_input)
+                #graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
+                X_val, _ = shape_data(X_val, y_val, training=False)
+
+                y_strat[models].append(lstm.predict(X_val)[0][0])
+        np.save("y_strat", y_strat, allow_pickle=True)
+
+    y_pred = []
+    y_strat = np.load("y_strat.npy",  allow_pickle=True)
+    for i in range(len(y_strat[0])):
+        vec = y_strat.T[i]
+        y_pred.append(statistics.mean(vec))
+    #np.save("predictions", y_pred, allow_pickle=True)
 
     #   preds = list()
-    y_pred = np.load("predictions.npy", allow_pickle=True)
+    #y_pred = np.load("predictions.npy", allow_pickle=True)
     #   for p in y_pred:
     #   preds.append(p[0])
     #   y_pred=preds
@@ -532,4 +629,4 @@ if __name__ == '__main__':
 
         holding_m = np.load("holding.npy")
         start = np.load("start.npy")[0]
-    graph(x_g=X, hold_g=holding_m, start_g=start)
+    graph(x_g=None, hold_g=holding_m, start_g=start, len_g=199, col_type=0)
