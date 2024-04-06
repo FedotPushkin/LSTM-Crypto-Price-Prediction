@@ -36,17 +36,24 @@ class Genlabels(object):
 
     def cont_to_disc(self):
         # encode label as binary (up/down)
-        label = list()
-        #for value in self.savgol_deriv:
-            #if value >= 0.2: label.append(1)
-           # else: label.append(0)
-        ct = self.candles.T
-        for c in range(ct.shape[1]):
-            if ct[c]['close']/ct[c]['open'] > 1.002 :
-                label.append(1)
+        label_pos, label_neg = list(), list()
+        for value in self.savgol_deriv:
+            if value >= 0.5:
+                label_pos.append(1)
             else:
-                label.append(0)
-        return np.array(label)
+                label_pos.append(0)
+            if value <= -0.5:
+                label_neg.append(1)
+            else:
+                label_neg.append(0)
+        #ct = self.candles.T
+        #for c in range(ct.shape[1]):
+            #if ct[c]['close']/ct[c]['open'] > 1.005:
+                # if ct[c]['close'] > ct[c]['open'] :
+               # label.append(1)
+            #else:
+              #  label.append(0)
+        return np.array(label_pos), np.array(label_neg)
 
 
 if __name__ == '__main__':
