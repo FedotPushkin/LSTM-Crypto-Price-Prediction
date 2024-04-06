@@ -304,46 +304,55 @@ def shuffle_and_train(x_adj, y_adj, tag):
 
     # save some data for testing
     # train_idx = int(cut * split)
-    
-    # shuffle data
-    np.random.seed(42)
-    shuffle_index = np.random.permutation(x_adj.shape[0])
-    x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
+    if reshuffle:
 
-    # find indexes of each label
-    idx_1 = np.argwhere(y_adj == 1).flatten()
-    idx_0 = np.argwhere(y_adj == 0).flatten()
+        # shuffle data
+        np.random.seed(42)
+        shuffle_index = np.random.permutation(x_adj.shape[0])
+        x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
 
-    shuffle_1 = np.random.permutation(len(idx_1))
-    shuffle_0 = np.random.permutation(len(idx_0))
-    minlen = min(len(idx_1), len(idx_0))
-    if len(idx_1) > len(idx_0):
-       idx_1 = idx_1[shuffle_0]
-    else:
-       idx_0 = idx_0[shuffle_1]
-    # shuffle_index = np.random.permutation(minlen)
+        # find indexes of each label
+        idx_1 = np.argwhere(y_adj == 1).flatten()
+        idx_0 = np.argwhere(y_adj == 0).flatten()
 
-    # grab specified cut of each label put them together
-    x_adj = np.concatenate((x_adj[idx_1[:minlen]], x_adj[idx_0[:minlen]]), axis=0)
-    # X_test = np.concatenate((x_adj[idx_1[train_idx:cut]], x_adj[idx_0[train_idx:cut]]), axis=0)
-    y_adj = np.concatenate((y_adj[idx_1[:minlen]], y_adj[idx_0[:minlen]]), axis=0)
-    # y_test = np.concatenate((y_adj[idx_1[train_idx:cut]], y_adj[idx_0[train_idx:cut]]), axis=0)
+        shuffle_1 = np.random.permutation(len(idx_1))
+        shuffle_0 = np.random.permutation(len(idx_0))
+        minlen = min(len(idx_1), len(idx_0))
+        if len(idx_1) > len(idx_0):
+           idx_1 = idx_1[shuffle_0]
+        else:
+           idx_0 = idx_0[shuffle_1]
+        # shuffle_index = np.random.permutation(minlen)
 
-    # shuffle again to mix labels
-    np.random.seed(42)
-    shuffle_index = np.random.permutation(x_adj.shape[0])
-    x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
-    bal = Counter(y_adj)
-    print(bal.most_common(2))
+        # grab specified cut of each label put them together
+        x_adj = np.concatenate((x_adj[idx_1[:minlen]], x_adj[idx_0[:minlen]]), axis=0)
+        # X_test = np.concatenate((x_adj[idx_1[train_idx:cut]], x_adj[idx_0[train_idx:cut]]), axis=0)
+        y_adj = np.concatenate((y_adj[idx_1[:minlen]], y_adj[idx_0[:minlen]]), axis=0)
+        # y_test = np.concatenate((y_adj[idx_1[train_idx:cut]], y_adj[idx_0[train_idx:cut]]), axis=0)
+
+        # shuffle again to mix labels
+        np.random.seed(42)
+        shuffle_index = np.random.permutation(x_adj.shape[0])
+        x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
+        bal = Counter(y_adj)
+        print(bal.most_common(2))
     skf = StratifiedKFold(n_splits=5, shuffle=True)
     for index, (train_indices, val_indices) in enumerate(skf.split(x_adj, y_adj)):
         print("Training on fold " + str(index + 1) + "/5...")
         # Generate batches from indices
         if index == 0:
-            xtrain, xval = x_adj[train_indices], x_adj[val_indices]
-            ytrain, yval = y_adj[train_indices], y_adj[val_indices]
-            ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
-            # graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
+            if reshuffle:
+                xtrain, xval = x_adj[train_indices], x_adj[val_indices]
+                ytrain, yval = y_adj[train_indices], y_adj[val_indices]
+                ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
+                # graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
+                np.save('xtrain', xtrain, allow_pickle=True)
+                np.save('ytrain', ytrain, allow_pickle=True)
+                np.save('xval', xval, allow_pickle=True)
+                np.save('yval', yval, allow_pickle=True)
+
+            xtrain, xval = np.load('xtrain.npy', allow_pickle=True), np.load('xval.npy', allow_pickle=True)
+            ytrain, yval = np.load('ytrain.npy', allow_pickle=True), np.load('yval.npy', allow_pickle=True)
             model = build_model(xtrain)
 
             checkpoint_filepath = 'checkpoint.weights.h5'
@@ -354,7 +363,7 @@ def shuffle_and_train(x_adj, y_adj, tag):
                 monitor='val_accuracy',
                 mode='max',
                 save_best_only=True)
-            history = model.fit(xtrain, ytrain, epochs=55, batch_size=32, shuffle=True, validation_data=(xval, yval),
+            history = model.fit(xtrain, ytrain, epochs=255, batch_size=32, shuffle=True, validation_data=(xval, yval),
                                 callbacks=[model_checkpoint_callback])
             model.load_weights(checkpoint_filepath)
             model.save(f'models/lstm_model_{tag}_{index}.h5')
@@ -581,6 +590,7 @@ if __name__ == '__main__':
     start = '20 Jan 2018'
     end = '25 Mar 2024'
     load_data = True
+    reshuffle=False
     train = True
     predict = True
     bench = True
