@@ -76,9 +76,12 @@ def graph(x_g, hold_g, start_g,  len_g, col_type):
                             low=cand_g[cols[col_type][3]],
                             close=cand_g[cols[col_type][1]],
                             name='candles')
+
     #trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=hold_g, name='holding', mode='lines', )
-    trace3 = go.Scatter( y=y_pred_p[-start_pred:-start_pred+len_g], name='holding_p', mode='lines', )
-    trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=y_pred_n[-start_pred:-start_pred+len_g], name='holding_n', mode='lines', )
+    trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=y_pred_p[-start_pred:-start_pred+len_g], yaxis='y2',
+                        name='holding_p', mode='lines', )
+    trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=y_pred_n[-start_pred:-start_pred+len_g], yaxis='y3',
+                        name='holding_n', mode='lines', )
     if trace6:
         trace6 = go.Candlestick(x=cand_g[cols[col_type][6]],
                                 # x=x_g.T[13][bias_x:len_g],
@@ -96,31 +99,24 @@ def graph(x_g, hold_g, start_g,  len_g, col_type):
         # trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[3], name='psar_h', mode='lines', )
         # trace5 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[4], name='psar_l', mode='lines', )
         # data = [trace0, trace1, trace2, trace3]
-
+    y2 = go.YAxis(overlaying='y', side='right')
+    y3 = go.YAxis(overlaying='y', side='right')
     layout = go.Layout(
         title='Labels',
-        yaxis=dict(
-            title='USDT value'
 
-        ),
-        yaxis2=dict(
-            title='rsi',
-        ),
-        yaxis3=dict(
-            title='macd',
-
-        )
+        yaxis2=y2,
+        yaxis3=y3
     )
 
-    # fig2 = go.Figure()#data=data, layout=layout)
-    fig2 = make_subplots(rows=3, cols=1)
-    fig2.add_trace(trace0, row=1, col=1)
+    fig2 = go.Figure(data=[trace0, trace3,trace4], layout=layout)
+    #fig2 = make_subplots(rows=3, cols=1)
+    #fig2.add_trace(trace0, row=1, col=1)
     # fig2.add_trace(trace4, row=1, col=1)
     # fig2.add_trace(trace5, row=1, col=1)
     # fig2.add_trace(trace6, row=3, col=1)
     if trace6:
         fig2.add_trace(trace6, row=3, col=1)
-    fig2.add_trace(trace3, row=3, col=1)
+    #fig2.add_trace(trace3, row=3, col=1)
     #fig2.add_trace(trace4, row=4, col=1)
     # fig2 = go.Figure(data=trace0)#, layout=layout)
     # py.plot(fig1, filename='../docs/label1.html')
@@ -346,29 +342,31 @@ def shuffle_and_train(x_adj, y_adj, tag):
                 ytrain, yval = y_adj[train_indices], y_adj[val_indices]
                 ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
                 # graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
-                np.save('xtrain', xtrain, allow_pickle=True)
-                np.save('ytrain', ytrain, allow_pickle=True)
-                np.save('xval', xval, allow_pickle=True)
-                np.save('yval', yval, allow_pickle=True)
+                np.save(f'xtrain_{tag}', xtrain, allow_pickle=True)
+                np.save(f'ytrain_{tag}', ytrain, allow_pickle=True)
+                np.save(f'xval_{tag}', xval, allow_pickle=True)
+                np.save(f'yval_{tag}', yval, allow_pickle=True)
 
-            xtrain, xval = np.load('xtrain.npy', allow_pickle=True), np.load('xval.npy', allow_pickle=True)
-            ytrain, yval = np.load('ytrain.npy', allow_pickle=True), np.load('yval.npy', allow_pickle=True)
-            model = build_model(xtrain)
-
-            checkpoint_filepath = 'checkpoint.weights.h5'
-            #model.load_weights(checkpoint_filepath)
-            model_checkpoint_callback = ModelCheckpoint(
-                filepath=checkpoint_filepath,
-                save_weights_only=True,
-                monitor='val_accuracy',
-                mode='max',
-                save_best_only=True)
-            history = model.fit(xtrain, ytrain, epochs=255, batch_size=32, shuffle=True, validation_data=(xval, yval),
-                                callbacks=[model_checkpoint_callback])
-            model.load_weights(checkpoint_filepath)
+            xtrain, xval = np.load('xtrain_{tag}.npy', allow_pickle=True), np.load('xval_{tag}.npy', allow_pickle=True)
+            ytrain, yval = np.load('ytrain_{tag}.npy', allow_pickle=True), np.load('yval_{tag}.npy', allow_pickle=True)
+            for lr in range(1, 4):
+                model = build_model(xtrain, learning_rate=0.009/(pow(3, lr)))
+                checkpoint_filepath = f'checkpoint_{tag}.weights.h5'
+                if os.path.isfile(checkpoint_filepath):
+                    model.load_weights(checkpoint_filepath)
+                model_checkpoint_callback = ModelCheckpoint(
+                    filepath=checkpoint_filepath,
+                    save_weights_only=True,
+                    monitor='val_accuracy',
+                    mode='max',
+                    save_best_only=True)
+                history = model.fit(xtrain, ytrain, epochs=100, batch_size=256, shuffle=True, validation_data=(xval, yval),
+                                    callbacks=[model_checkpoint_callback])
+                model.load_weights(checkpoint_filepath)
+                y_pred_p = model.predict(xval)
+                plothistories([history], y_pred_p, yval)
             model.save(f'models/lstm_model_{tag}_{index}.h5')
-    y_pred_p = model.predict(xval)
-    plothistories([history], y_pred_p, yval)
+
 
     #   X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
     #   X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
@@ -413,15 +411,15 @@ def normalise(x_n):
     return x_n.T
 
 
-def build_model(x_adj):
+def build_model(x_adj,learning_rate):
     # first layer
     model = Sequential()
     model.add(LSTM(20, input_shape=(x_adj.shape[1], x_adj.shape[2]), return_sequences=True))
-    model.add(Dropout(0.15))
+    model.add(Dropout(0.17))
 
     # second layer
     model.add(LSTM(40, return_sequences=False))
-    model.add(Dropout(0.15))
+    model.add(Dropout(0.17))
 
     # fourth layer and output
     model.add(Dense(20, activation='relu'))
@@ -429,7 +427,7 @@ def build_model(x_adj):
 
     # compile layers
     model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizers.Adam(learning_rate=0.001),
+                  optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
                   metrics=['accuracy'])
 
     return model
@@ -590,11 +588,11 @@ if __name__ == '__main__':
     start = '20 Jan 2018'
     end = '25 Mar 2024'
     load_data = True
-    reshuffle=False
+    reshuffle = True
     train = True
     predict = True
     bench = True
-    validation_length = 1000
+    validation_length = 2000
     validation_lag = 30
     timesteps = 15
     if load_data:
@@ -637,9 +635,10 @@ if __name__ == '__main__':
         #   ensure equal number of labels, shuffle, and split
         shuffle_and_train(xp, y_p, 'pos')
         shuffle_and_train(xn, y_n, 'neg')
-    candles = pd.DataFrame(candles)
+
     #   print(model.summary())
     if predict:
+        candles = pd.DataFrame(candles)
         y_val_p = to_categorical(y_val_p, 2)
         y_val_n = to_categorical(y_val_n, 2)
 
@@ -683,10 +682,10 @@ if __name__ == '__main__':
     #   y_pred_keras = keras_model.predict(X_test).ravel()
     def binarypreds(pred):
         for v in range(len(pred)):
-            if pred[v] < 0.3:
+            if pred[v] < 0.4:
                 pass#pred[v] = 1
             else:
-                if pred[v] > 0.7:
+                if pred[v] > 0.6:
                     pass#pred[v] = 0
                 else:
                     pass#pred[v] = None
@@ -698,8 +697,8 @@ if __name__ == '__main__':
         y_pred_n = np.insert(y_pred_n, 0, None, axis=0)
     for i in range(timesteps):
 
-        y_pred_p= np.append(y_pred_p, None)
-        y_pred_n= np.append(y_pred_n, None)
+        y_pred_p = np.append(y_pred_p, None)
+        y_pred_n = np.append(y_pred_n, None)
     #y_pred_p = np.array(y_pred_p) - np.array(y_pred_n)
             #   else:
             #  y_pred[i] = 0
@@ -735,11 +734,11 @@ if __name__ == '__main__':
         # random_guess(y_pred)
        # _, __, holding_m = strategy_bench(preds=y_pred_p, start_pos=start, verb=True)
         #np.save("holding", holding_m, allow_pickle=True)
-        start = len(candles[4]) - 800
+        start = len(candles[4]) - 216
         np.save("start", [start], allow_pickle=True)
     else:
         start = len(candles[6]) - 100
         holding_m = np.load("holding.npy")
         start = np.load("start.npy")[0]
         start = len(candles[6]) - 100
-    graph(x_g=None, hold_g=[], start_g=start, len_g=99, col_type=0)
+    graph(x_g=None, hold_g=[], start_g=start, len_g=200, col_type=0)
