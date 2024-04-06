@@ -97,6 +97,7 @@ def get_data_files(start, end, interval):
     np.save("hist_lo", lo)
     np.save("hist_hi", hi)
     np.save("hist_mean", res)
+    np.save("vol", vol)
     np.save('Date', candles['Date'])
 
     return candles
