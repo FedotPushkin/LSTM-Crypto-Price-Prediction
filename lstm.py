@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import auc
 from keras.utils import to_categorical
 from sklearn.metrics import roc_curve
+from sklearn.model_selection import train_test_split
 import statistics
 import os
 import sys
@@ -31,6 +32,7 @@ from ta.volatility import BollingerBands
 from ta.trend import PSARIndicator, AroonIndicator
 from ta.volume import OnBalanceVolumeIndicator
 from ta.momentum import AwesomeOscillatorIndicator
+from xgboost import XGBRegressor
 from get_data import get_data_files
 # from technical_analysis.poly_interpolation import PolyInter
 
@@ -78,10 +80,14 @@ def graph(x_g, hold_g, start_g,  len_g, col_type):
                             name='candles')
 
     #trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=hold_g, name='holding', mode='lines', )
-    trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=y_pred_p[-start_pred:-start_pred+len_g], yaxis='y2',
-                        name='holding_p', mode='lines', )
+    trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=roi_preds[-start_pred:-start_pred+len_g], yaxis='y',
+                        name='holding_p', mode='lines+markers', line_color='#14884e')#008000')#0bd051')
     trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=y_pred_n[-start_pred:-start_pred+len_g], yaxis='y3',
-                        name='holding_n', mode='lines', )
+                        name='holding_n', mode='lines+markers', line_color='#f44336' )
+    trace7 = go.Scatter(x=cand_g[cols[col_type][6]], y=roi_preds, yaxis='y',
+                        name='res', mode='lines+markers', line_color='#14884e')  # 008000')#0bd051')
+    trace8 = go.Scatter(x=cand_g[cols[col_type][6]], y=target[-100:], yaxis='y3',
+                        name='target', mode='lines+markers', line_color='#f44336')
     if trace6:
         trace6 = go.Candlestick(x=cand_g[cols[col_type][6]],
                                 # x=x_g.T[13][bias_x:len_g],
@@ -108,7 +114,7 @@ def graph(x_g, hold_g, start_g,  len_g, col_type):
         yaxis3=y3
     )
 
-    fig2 = go.Figure(data=[trace0, trace3,trace4], layout=layout)
+    fig2 = go.Figure(data=[trace7, trace8], layout=layout)
     #fig2 = make_subplots(rows=3, cols=1)
     #fig2.add_trace(trace0, row=1, col=1)
     # fig2.add_trace(trace4, row=1, col=1)
@@ -333,10 +339,11 @@ def shuffle_and_train(x_adj, y_adj, tag):
         bal = Counter(y_adj)
         print(bal.most_common(2))
     skf = StratifiedKFold(n_splits=5, shuffle=True)
+    histories = list()
     for index, (train_indices, val_indices) in enumerate(skf.split(x_adj, y_adj)):
         print("Training on fold " + str(index + 1) + "/5...")
         # Generate batches from indices
-        if index == 0:
+        if True:#index == 0:
             if reshuffle:
                 xtrain, xval = x_adj[train_indices], x_adj[val_indices]
                 ytrain, yval = y_adj[train_indices], y_adj[val_indices]
@@ -347,11 +354,11 @@ def shuffle_and_train(x_adj, y_adj, tag):
                 np.save(f'xval_{tag}', xval, allow_pickle=True)
                 np.save(f'yval_{tag}', yval, allow_pickle=True)
 
-            xtrain, xval = np.load('xtrain_{tag}.npy', allow_pickle=True), np.load('xval_{tag}.npy', allow_pickle=True)
-            ytrain, yval = np.load('ytrain_{tag}.npy', allow_pickle=True), np.load('yval_{tag}.npy', allow_pickle=True)
+            xtrain, xval = np.load(f'xtrain_{tag}.npy', allow_pickle=True), np.load(f'xval_{tag}.npy', allow_pickle=True)
+            ytrain, yval = np.load(f'ytrain_{tag}.npy', allow_pickle=True), np.load(f'yval_{tag}.npy', allow_pickle=True)
             for lr in range(1, 4):
-                model = build_model(xtrain, learning_rate=0.009/(pow(3, lr)))
-                checkpoint_filepath = f'checkpoint_{tag}.weights.h5'
+                model = build_model(xtrain, learning_rate=0.01/(pow(3, lr)))
+                checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
                 if os.path.isfile(checkpoint_filepath):
                     model.load_weights(checkpoint_filepath)
                 model_checkpoint_callback = ModelCheckpoint(
@@ -360,14 +367,18 @@ def shuffle_and_train(x_adj, y_adj, tag):
                     monitor='val_accuracy',
                     mode='max',
                     save_best_only=True)
-                history = model.fit(xtrain, ytrain, epochs=100, batch_size=256, shuffle=True, validation_data=(xval, yval),
+                history = model.fit(xtrain, ytrain, epochs=150, batch_size=256, shuffle=True, validation_data=(xval, yval),
                                     callbacks=[model_checkpoint_callback])
                 model.load_weights(checkpoint_filepath)
                 y_pred_p = model.predict(xval)
-                plothistories([history], y_pred_p, yval)
+                histories.append(history)
+                #plothistories([history], y_pred_p, yval)
             model.save(f'models/lstm_model_{tag}_{index}.h5')
-
-
+    ind=0
+    for history in histories:
+        np.save(f'histories_{tag}_{ind}', history.history['accuracy'], allow_pickle=True)
+        np.save(f'histories_{tag}_{ind}', history.history['val_accuracy'], allow_pickle=True)
+        ind+=1
     #   X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
     #   X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
 
@@ -415,11 +426,11 @@ def build_model(x_adj,learning_rate):
     # first layer
     model = Sequential()
     model.add(LSTM(20, input_shape=(x_adj.shape[1], x_adj.shape[2]), return_sequences=True))
-    model.add(Dropout(0.17))
+    model.add(Dropout(0.2))
 
     # second layer
     model.add(LSTM(40, return_sequences=False))
-    model.add(Dropout(0.17))
+    model.add(Dropout(0.2))
 
     # fourth layer and output
     model.add(Dense(20, activation='relu'))
@@ -453,11 +464,13 @@ def strategy_bench(preds, start_pos, verb=False):
     position = 0
     holding = list()
 
-    for i in range(start_pos, start_pos+len(preds)):
+    for i in range(start_pos, start_pos+len(preds)-1):
         #   self.savgol = self.apply_filter(deriv=0, hist=candles.iloc[:i + 1]['mean'])
         #   self.savgol_deriv = self.apply_filter(deriv=1, hist=candles.iloc[:i + 1]['mean'])
         #   ####long#####
-        if balance > 0 and amount == 0 and position == 0 and preds[i-start_pos] > 0.7 and y_pred_n[i-start_pos] < 0.3:
+        if preds[i - start_pos] is None:
+            continue
+        if balance > 0 and amount == 0 and position == 0 and preds[i-start_pos] > 1:
             #   #open long#
             #   money spent on long pos
             long_value = start_balance
@@ -471,7 +484,7 @@ def strategy_bench(preds, start_pos, verb=False):
 
         else:
             # #close long#
-            if amount > 0 and position == 1 and balance == 0 and (preds[i-start_pos] < 0.7 or y_pred_n[i-start_pos] > 0.3):
+            if amount > 0 and position == 1 and balance == 0 and (preds[i-start_pos] < 1 ):
                 profit_long.append(((1-fee)*amount*candles.iloc[i][0]-long_value)/long_value)
                 leftover += (1-fee)*amount*candles.iloc[i][0]-start_balance
                 trades += 1
@@ -485,7 +498,7 @@ def strategy_bench(preds, start_pos, verb=False):
             else:
                 #   #open short#
 
-                if position == 0 and amount == 0 and amount_short == 0 and preds[i-start_pos] < 0:
+                if position == 0 and amount == 0 and amount_short == 0 and False and preds[i-start_pos] < 0:
                     position = -1
                     # how much was sold
                     amount_short = start_short_balance*(1 - fee)/candles.iloc[i][0]
@@ -496,7 +509,7 @@ def strategy_bench(preds, start_pos, verb=False):
                         print('short at ' + str(candles.iloc[i][6]) + ' for ' + str(candles.iloc[i][0]))
                 else:
                     #   #close short#
-                    if position == - 1 and preds[i-start_pos] > 0 and amount == 0 and amount_short > 0:
+                    if position == - 1 and preds[i-start_pos] > 0 and amount == 0 and amount_short > 0 and False:
                         position = 0
                         curr_profit = short_value-(1 + fee) * amount_short * candles.iloc[i][0]
                         short_leftover += curr_profit
@@ -527,8 +540,9 @@ def strategy_bench(preds, start_pos, verb=False):
     guessed_right = 0
     diffs = []
     for g in range(len(preds)):
-        if preds[g] == y_real[g]:
-            guessed_right += 1
+        pass
+        #if preds[g] == y_real[g]:
+         #   guessed_right += 1
         # diffs.append(abs(preds[g]-y_real[g]))
     print(f'guessed right {(100*guessed_right/len(preds)):.2f}%')
     #   print('threshhold',thresl,'trades long',trades,',trades_short', trades_short)
@@ -584,19 +598,39 @@ def random_guess(length):
     print('mean long', np.mean(res), 'mean short', np.mean(res_s))
 
 
+def bench_cand(pred):
+    start_pos = len(candles)-validation_length
+
+    profit = list()
+    for j in range(0, 101):
+        temp_profit = 0
+        for s in range(start_pos, start_pos + len(pred) - 1):
+            if pred[s-start_pos] is None:
+                pass
+            elif pred[s-start_pos] > j/100 :
+                temp_profit += ((1-0.001)*candles[1][s]-(1+0.001)*candles[0][s])/candles[0][s]
+        profit.append(temp_profit)
+    plt.figure(1)
+    plt.plot(profit)
+    plt.title('profit ')
+    plt.ylabel('sum roi')
+    plt.xlabel('pred value(0.3-0.9')
+    plt.show()
+
+
 if __name__ == '__main__':
-    start = '20 Jan 2018'
+    start = '01 Jan 2017'
     end = '25 Mar 2024'
     load_data = True
     reshuffle = True
     train = True
     predict = True
     bench = True
-    validation_length = 2000
+    validation_length = 10000
     validation_lag = 30
     timesteps = 15
     if load_data:
-        #candles = get_data_files(start, end, 60)
+        candles = get_data_files(start, end, 30)
         cl = np.load("hist_cl.npy")
         op = np.load("hist_op.npy")
         lo = np.load("hist_lo.npy")
@@ -637,14 +671,15 @@ if __name__ == '__main__':
         shuffle_and_train(xn, y_n, 'neg')
 
     #   print(model.summary())
+    candles = pd.DataFrame(candles)
     if predict:
-        candles = pd.DataFrame(candles)
+
         y_val_p = to_categorical(y_val_p, 2)
         y_val_n = to_categorical(y_val_n, 2)
 
         def predict(tag):
             y_strat = []
-            for models in range(1):
+            for models in range(5):
 
                 y_strat.append(list())
                 lstm = load_model(f'models/lstm_model_{tag}_{models}.h5')
@@ -654,7 +689,7 @@ if __name__ == '__main__':
                     # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
                     X_val, _ = shape_data(X_val, [0], training=False)
 
-                    y_strat[models].append(lstm.predict(X_val)[0][0])
+                    y_strat[models].append(lstm.predict(X_val)[0][1])
             np.save(f'y_strat_{tag}', y_strat, allow_pickle=True)
 
 
@@ -689,16 +724,67 @@ if __name__ == '__main__':
                     pass#pred[v] = 0
                 else:
                     pass#pred[v] = None
-        return pred
-    y_pred_p = binarypreds(getpreds('pos'))
-    y_pred_n = binarypreds(getpreds('neg'))
-    for i in range(timesteps+validation_lag):
-        y_pred_p = np.insert(y_pred_p, 0, None, axis=0)
-        y_pred_n = np.insert(y_pred_n, 0, None, axis=0)
-    for i in range(timesteps):
 
-        y_pred_p = np.append(y_pred_p, None)
-        y_pred_n = np.append(y_pred_n, None)
+        return pred
+    def addnones(pred):
+        for _ in range(timesteps + validation_lag):
+            pred = np.insert(pred, 0, None, axis=0)
+        for _ in range(timesteps):
+            pred = np.append(pred, None)
+        return pred
+    y_pred_p = np.array(binarypreds(getpreds('pos')))
+    y_pred_n = np.array(binarypreds(getpreds('neg')))
+    #y_pred_p = np.array(y_pred_p) - np.array(y_pred_n)
+    def makegrad(pred):
+        grad = []
+        for i in range(1, pred.shape[0]):
+            fragment = pred[i - 1:i + 1]
+            frag_grad = np.gradient(fragment, [0, 1])
+            grad.append(frag_grad[0])
+        return grad
+
+
+    grad_pred_p = makegrad(y_pred_p)
+    grad_pred_n = makegrad(y_pred_n)
+    y_pred_p = np.delete(y_pred_p, y_pred_p.shape[0] - 1)
+    y_pred_n = np.delete(y_pred_n, y_pred_n.shape[0] - 1)
+    #x_pred = list(range(y_pred_p.shape[0]))
+    #grad_pred_p_full = np.gradient(y_pred_p, x_pred)
+    #grad_pred_n = np.gradient(y_pred_n, x_pred)
+    #grad_pred_p = np.insert(grad_pred_p, 0, None, axis=0)
+    #grad_pred_n = np.insert(grad_pred_n, 0, None, axis=0)
+    target = []
+    for i in range(candles.shape[0] - validation_length+validation_lag+timesteps, candles.shape[0] - timesteps):
+        target.append((candles[1][i]-candles[0][i])/candles[0][i])
+    x_train_xg = np.array([y_pred_p[:-100], y_pred_n[:-100], np.array(grad_pred_p)[:-100], np.array(grad_pred_n)[:-100]]).T
+    x_test_xg = np.array([y_pred_p[-100:], y_pred_n[-100:], np.array(grad_pred_p)[-100:], np.array(grad_pred_n)[-100:]]).T
+    def trainxg(train_data,targets):
+
+        #xtrain, xtest, ytrain, ytest = train_test_split(train_data, targets, test_size=.2)
+        # create model instance
+        bst = XGBRegressor()
+        # fit model
+        history = bst.fit(train_data, targets)
+        print("Training score: ", bst.score(train_data, targets))
+        # make predictions
+        return bst
+    xg = trainxg(x_train_xg, target[1:-100])
+    roi_preds = xg.predict(x_test_xg)
+    hit,miss=0,0
+    for i in range(100):
+        if roi_preds[i]<0:
+            if roi_preds[i]*target[-100+i]>0:
+                hit+=1
+            else: miss+=1
+    print(f'xg res {hit/(hit+miss)}')
+    #y_pred_p =addnones(y_pred_p)
+    #y_pred_n = addnones(y_pred_n)
+    #grad_pred_p = addnones(grad_pred_p)
+
+    #grad_pred_p = np.delete(grad_pred_p, grad_pred_p.shape[0]-1)
+    #grad_pred_n = np.delete(grad_pred_n, grad_pred_n.shape[0] - 1)
+
+
     #y_pred_p = np.array(y_pred_p) - np.array(y_pred_n)
             #   else:
             #  y_pred[i] = 0
@@ -728,17 +814,20 @@ if __name__ == '__main__':
    # print(f'long {np.mean(pos)} short {np.mean(neg)}')
     #   y_test_trade = y_pred.reshape(y_pred.shape[1],y_pred.shape[0])
     if bench:
-        start = candles.shape[0] - validation_length + validation_lag + timesteps
+        start = candles.shape[0] - validation_length
         res = []
         res_s = []
         # random_guess(y_pred)
-       # _, __, holding_m = strategy_bench(preds=y_pred_p, start_pos=start, verb=True)
+        #_, __, holding_m = strategy_bench(preds=grad_pred_p, start_pos=start, verb=True)
         #np.save("holding", holding_m, allow_pickle=True)
-        start = len(candles[4]) - 216
+        start = len(candles) - 66
         np.save("start", [start], allow_pickle=True)
     else:
         start = len(candles[6]) - 100
         holding_m = np.load("holding.npy")
         start = np.load("start.npy")[0]
         start = len(candles[6]) - 100
-    graph(x_g=None, hold_g=[], start_g=start, len_g=200, col_type=0)
+    #bench_cand(grad_pred_p)
+    #bench_cand(y_pred_n)
+    graph(x_g=None, hold_g=[], start_g=start, len_g=65, col_type=0)
+
