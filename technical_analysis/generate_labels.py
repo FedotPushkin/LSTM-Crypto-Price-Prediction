@@ -18,7 +18,7 @@ class Genlabels(object):
             sys.exit('Error: {0}'.format(error))   
 
         # это лист из средней цены между опеном и клоузом
-        self.hist = data['close']
+        self.hist = data#['close']
         # здесь долженбыть датафрейм а не лист
         self.candles = data
         self.window = window
@@ -28,7 +28,7 @@ class Genlabels(object):
         self.savgol = self.apply_filter(deriv=0, hist=self.hist)
         self.savgol_deriv = self.apply_filter(deriv=1, hist=self.hist)
 
-        self.labels = self.cont_to_disc()
+        self.labels = self.savgol_deriv
 
     def apply_filter(self, deriv, hist):
         # apply a Savitzky-Golay filter to historical prices
