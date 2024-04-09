@@ -140,14 +140,7 @@ def graph(x_g, hold_g, start_g,  len_g, col_type):
 def plothistories(histories, y_pred_p, yval_p):
     for history in histories:
         # summarize history for accuracy
-        plt.figure(1)
-        plt.plot(history.history['accuracy'])
-        plt.plot(history.history['val_accuracy'])
-        plt.title('model accuracy')
-        plt.ylabel('accuracy')
-        plt.xlabel('epoch')
-        plt.legend(['train', 'test'], loc='upper left')
-        plt.show()
+
         # summarize history for loss
         plt.figure(2)
         plt.plot(history.history['loss'])
@@ -158,19 +151,19 @@ def plothistories(histories, y_pred_p, yval_p):
         plt.legend(['train', 'test'], loc='upper left')
         plt.show()
 
-        fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p.T[0], y_pred_p.T[0])
+        #fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p.T[0], y_pred_p.T[0])
 
-        auc_keras = auc(fpr_keras, tpr_keras)
+        #auc_keras = auc(fpr_keras, tpr_keras)
 
         plt.figure(3)
         plt.plot([0, 1], [0, 1], 'k--')
-        plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
-        plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
+        #plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
+        #plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
         plt.xlabel('False positive rate')
         plt.ylabel('True positive rate')
         plt.title('ROC curve')
         plt.legend(loc='best')
-        plt.show()
+        #plt.show()
 
 
 def build_tt_data(data):
@@ -371,8 +364,8 @@ def shuffle_and_train(x_adj, y_adj, tag):
 
             xtrain, xval = np.load(f'xtrain_{tag}.npy', allow_pickle=True), np.load(f'xval_{tag}.npy', allow_pickle=True)
             ytrain, yval = np.load(f'ytrain_{tag}.npy', allow_pickle=True), np.load(f'yval_{tag}.npy', allow_pickle=True)
-            for lr in range(1, 2):
-                model = build_model(xtrain, learning_rate=0.015/(pow(3, lr)))
+            for lr in range(1, 10):
+                model = build_model(xtrain, learning_rate=0.005/(pow(3, lr)))
                 checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
                 if os.path.isfile(checkpoint_filepath):
                     model.load_weights(checkpoint_filepath)
@@ -382,12 +375,12 @@ def shuffle_and_train(x_adj, y_adj, tag):
                     monitor='val_loss',#'val_accuracy',
                     mode='min',
                     save_best_only=True)
-                history = model.fit(xtrain, ytrain, epochs=150, batch_size=256, shuffle=True, validation_data=(xval, yval),
+                history = model.fit(xtrain, ytrain, epochs=500, batch_size=256, shuffle=True, validation_data=(xval, yval),
                                     callbacks=[model_checkpoint_callback])
                 model.load_weights(checkpoint_filepath)
                 y_pred_p = model.predict(xval)
                 histories.append(history)
-                #plothistories([history], y_pred_p, yval)
+                plothistories([history], y_pred_p, yval)
             model.save(f'models/lstm_model_{tag}_{index}.h5')
     ind=0
     for history in histories:
@@ -437,7 +430,8 @@ def normalise(x_n):
     return x_n.T
 
 
-def build_model(x_adj,learning_rate):
+@keras.saving.register_keras_serializable()
+def build_model(x_adj, learning_rate):
     # first layer
     model = Sequential()
     model.add(LSTM(20, input_shape=(x_adj.shape[1], x_adj.shape[2]), return_sequences=True))
@@ -449,7 +443,8 @@ def build_model(x_adj,learning_rate):
 
     # fourth layer and output
     model.add(Dense(1, activation='linear'))
-    model.compile(loss='mse', optimizer='rmsprop')
+
+    model.compile(loss='mse', optimizer=keras.optimizers.Nadam(learning_rate=0.002, beta_1=0.9, beta_2=0.999, weight_decay=0.004))
     #model.add(Dense(20, activation='relu'))
     #model.add(Dense(2, activation='softmax'))
 
@@ -638,8 +633,8 @@ def bench_cand(pred):
 if __name__ == '__main__':
     start = '01 Jan 2017'
     end = '25 Mar 2024'
-    load_data = True
-    reshuffle = True
+    load_data = False
+    reshuffle = False
     train = True
     predict = True
     bench = True
@@ -686,18 +681,18 @@ if __name__ == '__main__':
     if train:
         #   ensure equal number of labels, shuffle, and split
         shuffle_and_train(xp, y_p, 'pos')
-        shuffle_and_train(xn, y_n, 'neg')
+        #shuffle_and_train(xn, y_n, 'neg')
 
     #   print(model.summary())
     candles = pd.DataFrame(candles)
     if predict:
 
-        y_val_p = to_categorical(y_val_p, 2)
-        y_val_n = to_categorical(y_val_n, 2)
+        #y_val_p = to_categorical(y_val_p, 2)
+        #y_val_n = to_categorical(y_val_n, 2)
 
         def predict(tag):
             y_strat = []
-            for models in range(5):
+            for models in range(1):
 
                 y_strat.append(list())
                 lstm = load_model(f'models/lstm_model_{tag}_{models}.h5')
@@ -707,7 +702,7 @@ if __name__ == '__main__':
                     # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
                     X_val, _ = shape_data(X_val, [0], training=False)
 
-                    y_strat[models].append(lstm.predict(X_val)[0][1])
+                    y_strat[models].append(lstm.predict(X_val, batch_size=1)[0][1])
             np.save(f'y_strat_{tag}', y_strat, allow_pickle=True)
 
 
