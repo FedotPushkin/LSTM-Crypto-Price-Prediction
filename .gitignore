@@ -7,3 +7,6 @@ keys.txt
 # do not upload models
 *.dump
 *.h5
+*.npy
+*.rar
+*.html
