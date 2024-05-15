@@ -30,11 +30,11 @@ import sys
 import plotly.express as px
 from sklearn.model_selection import StratifiedKFold
 # cross_val_score
-from technical_analysis.generate_labels import Genlabels
-from technical_analysis.macd import Macd
-from technical_analysis.rsi import StochRsi
-from technical_analysis.dpo import Dpo
-from technical_analysis.coppock import Coppock
+from generate_labels import Genlabels
+from macd import Macd
+from rsi import StochRsi
+from dpo import Dpo
+from coppock import Coppock
 from ta.volatility import BollingerBands
 from ta.trend import PSARIndicator, AroonIndicator
 from ta.volume import OnBalanceVolumeIndicator
@@ -45,7 +45,7 @@ from get_data import get_data_files
 
 # sys.path.append(os.path.join('C:/', 'Users', 'Fedot', 'Downloads', 'LSTM-Crypto-Price-Prediction', 'historical_data'))
 # sys.path.append(os.path.join('historical_data'))
-# sys.path.append(os.path.join('technical_analysis'))
+#os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 def graph(x_g, hold_g, start_g,  len_g, col_type):
@@ -314,7 +314,7 @@ def shuffle_and_train(x_adj, y_adj, tag):
     # count_1 = np.count_nonzero(y_adj)
     # count_0 = y_adj.shape[0] - count_1
     # cut = min(count_0, count_1)
-
+    use_checkpoints = False
     # save some data for testing
     # train_idx = int(cut * split)
     if reshuffle:
@@ -351,12 +351,15 @@ def shuffle_and_train(x_adj, y_adj, tag):
         print(bal.most_common(2))
     system = platform.system()
     gpus = tf.config.list_physical_devices('GPU')
+    cpus = tf.config.list_physical_devices('CPU')
     print(f'gpus {gpus}')
+    print(f'cpus {cpus}')
     if gpus:
         if system == "Windows":
+            print(tf.test.gpu_device_name())
             tf.config.set_logical_device_configuration(
                 gpus[0],
-                [tf.config.LogicalDeviceConfiguration(memory_limit=4000)]
+                [tf.config.LogicalDeviceConfiguration(memory_limit=2800)]
             )
 
     def get_available_devices():
@@ -364,8 +367,13 @@ def shuffle_and_train(x_adj, y_adj, tag):
         return [x.name for x in local_device_protos]
 
     print(get_available_devices())
+    #tf.debugging.set_log_device_placement(True)
+    gpus = tf.config.list_logical_devices('GPU')
+    #strategy = tf.distribute.MirroredStrategy(cpus)
     skf = StratifiedKFold(n_splits=5, shuffle=True)
     histories = list()
+    #with strategy.scope():
+
     # for index, (train_indices, val_indices) in enumerate(skf.split(x_adj, y_adj)):
     for index in range(1):
         print("Training on fold " + str(index + 1) + "/5...")
@@ -391,9 +399,9 @@ def shuffle_and_train(x_adj, y_adj, tag):
             ytrain, yval = np.load(f'ytrain_{tag}.npy', allow_pickle=True), \
                 np.load(f'yval_{tag}.npy', allow_pickle=True)
             for lr in range(1, 3):
-                model = build_model(xtrain, learning_rate=0.005/(pow(2, lr)))
+                model = build_model(xtrain, learning_rate=0.05/(pow(2, lr)))
                 checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
-                if os.path.isfile(checkpoint_filepath):
+                if os.path.isfile(checkpoint_filepath) and use_checkpoints:
                     model.load_weights(checkpoint_filepath)
                 model_checkpoint_callback = ModelCheckpoint(
 
@@ -403,12 +411,12 @@ def shuffle_and_train(x_adj, y_adj, tag):
                     mode='min',
                     save_best_only=True)
                 history = model.fit(xtrain, ytrain,
-                                    epochs=50,
-                                    batch_size=256,
+                                    epochs=150,
+                                    batch_size=512,
                                     shuffle=True,
                                     validation_data=(xval, yval),
                                     callbacks=[model_checkpoint_callback])
-                model.load_weights(checkpoint_filepath)
+                #model.load_weights(checkpoint_filepath)
                 y_pred_p = model.predict(xval)
                 histories.append(history)
                 plothistories([history], y_pred_p, yval)
@@ -468,31 +476,33 @@ def normalise(x_n):
 def build_model(x_adj, learning_rate):
     # first layer
     model = Sequential()
-    model.add(LSTM(100,
+    model.add(LSTM(20,
                    input_shape=(x_adj.shape[1], x_adj.shape[2]),
-                   return_sequences=True,
-                   kernel_regularizer=reg.L1(0.01)))
+                   return_sequences=True))
+                   #kernel_regularizer=reg.L1(0.01)))
     model.add(BatchNormalization())
     model.add(Dropout(0.2))
 
     # second layer
-    model.add(LSTM(100, return_sequences=True, kernel_regularizer=reg.L1(0.01)))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.2))
-    model.add(LSTM(100, return_sequences=False, kernel_regularizer=reg.L1(0.01)))
+    #model.add(LSTM(30, return_sequences=True, kernel_regularizer=reg.L1(0.01)))
+    #model.add(BatchNormalization())
+    #model.add(Dropout(0.2))
+    model.add(LSTM(40, return_sequences=False))#, kernel_regularizer=reg.L1(0.01)))
     model.add(BatchNormalization())
     model.add(Dropout(0.2))
 
-    model.add(Dense(36, activation='linear'))  # kernel_regularizer=regularizers.L1(0.01)
-    model.add(AlphaDropout(0.5))
+    #model.add(Dense(10, activation='linear'))  # kernel_regularizer=regularizers.L1(0.01)
+    #model.add(AlphaDropout(0.5))
     # fourth layer and output
-    model.add(Dense(1, activation='linear'))    # kernel_regularizer=regularizers.L1(0.01)
+    model.add(Dense(1, activation='relu'))    # kernel_regularizer=regularizers.L1(0.01)
 
-    model.compile(loss='mse', metrics=[keras.metrics.RootMeanSquaredError()],
-                  optimizer=keras.optimizers.Nadam(learning_rate=learning_rate,
-                                                   beta_1=0.9,
-                                                   beta_2=0.999,
-                                                   weight_decay=0.004))
+    optimizer = keras.optimizers.Nadam(learning_rate=learning_rate,
+                                       beta_1=0.9,
+                                       beta_2=0.999,
+                                       decay=0.004)
+
+    model.compile(loss='mse', metrics=[keras.metrics.RootMeanSquaredError()], optimizer = optimizer )
+
     # model.add(Dense(20, activation='relu'))
     # model.add(Dense(2, activation='softmax'))
 
@@ -679,18 +689,18 @@ def bench_cand(pred):
 
 
 if __name__ == '__main__':
-    start = '01 Jan 2017'
+    start = '01 Jan 2023'
     end = '08 Apr 2024'
     load_data = True
-    reshuffle = False
-    train = False
+    reshuffle = True
+    train = True
     predict = True
     bench = True
-    validation_length = 700000
+    validation_length = 1000
     validation_lag = 30
     timesteps = 15
     if load_data:
-        candles = get_data_files(start, end, 5)
+        candles = get_data_files(start, end, 60)
         np.save('candles', candles, allow_pickle=True)
         cl = np.load("hist_cl.npy")
         op = np.load("hist_op.npy")
@@ -706,8 +716,8 @@ if __name__ == '__main__':
         cp = Counter(labels_p)
         labels_n = []
         cn = Counter(labels_n)
-        print(f'pos {cp.most_common(2)}')
-        print(f'neg {cn.most_common(2)}')
+        #print(f'pos {cp.most_common(2)}')
+        #print(f'neg {cn.most_common(2)}')
         y_p = labels_p[31:1 - validation_length]
         y_n = labels_n[31:1 - validation_length]
         # graph(X, start_g=31, hold_g=y, len_g=100, col_type=1)
