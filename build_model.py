@@ -5,7 +5,7 @@ from keras.layers import LSTM, Dense, Dropout, BatchNormalization, AlphaDropout
 def build_model(x_adj, learning_rate):
     # first layer
     model = Sequential()
-    model.add(LSTM(50,
+    model.add(LSTM(100,
                    input_shape=(x_adj.shape[1], x_adj.shape[2]),
                    return_sequences=True,
                    kernel_regularizer=reg.L1(0.01)))
@@ -13,9 +13,9 @@ def build_model(x_adj, learning_rate):
     model.add(Dropout(0.1))
 
     # second layer
-    #model.add(LSTM(30, return_sequences=True, kernel_regularizer=reg.L1(0.01)))
-    #model.add(BatchNormalization())
-    #model.add(Dropout(0.2))
+    model.add(LSTM(100, return_sequences=True, kernel_regularizer=reg.L1(0.01)))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.1))
     model.add(LSTM(100, return_sequences=False, kernel_regularizer=reg.L1(0.01)))
     model.add(BatchNormalization())
     model.add(Dropout(0.1))
