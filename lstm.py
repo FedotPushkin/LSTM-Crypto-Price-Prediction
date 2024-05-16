@@ -1,6 +1,6 @@
 
-import tensorflow as tf
-from tensorflow import keras
+
+
 import keras.optimizers
 import keras.regularizers as reg
 import numpy as np
@@ -11,7 +11,7 @@ from plotly.subplots import make_subplots
 from collections import Counter
 from keras.layers import LSTM, Dense, Dropout, BatchNormalization, AlphaDropout
 from keras.callbacks import ModelCheckpoint
-from tensorflow.python.client import device_lib
+
 # from verstack.stratified_continuous_split import scsplit
 # TimeDistributed
 from keras.models import Sequential, load_model
@@ -21,20 +21,21 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import auc
 from keras.utils import to_categorical
 from sklearn.metrics import roc_curve
-from sklearn.model_selection import train_test_split
+
 import statistics
 import os
 # from keras.src.regularizers
-import platform
+
 import sys
 import plotly.express as px
-from sklearn.model_selection import StratifiedKFold
+
 # cross_val_score
 from generate_labels import Genlabels
 from macd import Macd
 from rsi import StochRsi
 from dpo import Dpo
 from coppock import Coppock
+from shuffle import shuffle_and_train
 from ta.volatility import BollingerBands
 from ta.trend import PSARIndicator, AroonIndicator
 from ta.volume import OnBalanceVolumeIndicator
@@ -145,33 +146,6 @@ def graph(x_g, hold_g, start_g,  len_g, col_type):
     py.plot(fig2, filename='label2.html')
 
 
-def plothistories(histories, y_pred_p, yval_p):
-    for history in histories:
-        # summarize history for accuracy
-
-        # summarize history for loss
-        plt.figure(2)
-        plt.plot(history.history['loss'])
-        plt.plot(history.history['val_loss'])
-        plt.title('model loss')
-        plt.ylabel('loss')
-        plt.xlabel('epoch')
-        plt.legend(['train', 'test'], loc='upper left')
-        plt.show()
-
-        # fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p.T[0], y_pred_p.T[0])
-
-        # auc_keras = auc(fpr_keras, tpr_keras)
-
-        plt.figure(3)
-        plt.plot([0, 1], [0, 1], 'k--')
-        # plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
-        # plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
-        plt.xlabel('False positive rate')
-        plt.ylabel('True positive rate')
-        plt.title('ROC curve')
-        plt.legend(loc='best')
-        # plt.show()
 
 
 def build_tt_data(data):
@@ -220,7 +194,7 @@ def build_tt_data(data):
                    grad_rsi,
                    sar_d,
                    aru-ard,
-                   # ard,
+                   ard,
                    obv,
                    # sar_di,
                    # sar_ui,
@@ -231,12 +205,12 @@ def build_tt_data(data):
                    # low,
                    # cl,
                    # vol,
-                   # boll_h,
-                   # grad_bolh,
-                   # boll_l,
-                   # grad_boll,
+                   #boll_h,
+                   grad_bolh,
+                   #boll_l,
+                   grad_boll,
                    grad_cop,
-                   # dpo,
+                   dpo,
                    cop
                    ])
     #   high[30:],
@@ -309,128 +283,6 @@ def build_val_data(data):
     return xv[validation_lag:]
 
 
-def shuffle_and_train(x_adj, y_adj, tag):
-    # count the number of each label
-    # count_1 = np.count_nonzero(y_adj)
-    # count_0 = y_adj.shape[0] - count_1
-    # cut = min(count_0, count_1)
-    use_checkpoints = False
-    # save some data for testing
-    # train_idx = int(cut * split)
-    if reshuffle:
-
-        # shuffle data
-        np.random.seed(42)
-        shuffle_index = np.random.permutation(x_adj.shape[0])
-        x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
-
-        # find indexes of each label
-        idx_1 = np.argwhere(y_adj > 0).flatten()
-        idx_0 = np.argwhere(y_adj < 0).flatten()
-
-        shuffle_1 = np.random.permutation(len(idx_1))
-        shuffle_0 = np.random.permutation(len(idx_0))
-        minlen = min(len(idx_1), len(idx_0))
-        if len(idx_1) > len(idx_0):
-            idx_1 = idx_1[shuffle_0]
-        else:
-            idx_0 = idx_0[shuffle_1]
-        # shuffle_index = np.random.permutation(minlen)
-
-        # grab specified cut of each label put them together
-        x_adj = np.concatenate((x_adj[idx_1[:minlen]], x_adj[idx_0[:minlen]]), axis=0)
-        # X_test = np.concatenate((x_adj[idx_1[train_idx:cut]], x_adj[idx_0[train_idx:cut]]), axis=0)
-        y_adj = np.concatenate((y_adj[idx_1[:minlen]], y_adj[idx_0[:minlen]]), axis=0)
-        # y_test = np.concatenate((y_adj[idx_1[train_idx:cut]], y_adj[idx_0[train_idx:cut]]), axis=0)
-
-        # shuffle again to mix labels
-        np.random.seed(42)
-        shuffle_index = np.random.permutation(x_adj.shape[0])
-        x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
-        bal = Counter(y_adj)
-        print(bal.most_common(2))
-    system = platform.system()
-    gpus = tf.config.list_physical_devices('GPU')
-    cpus = tf.config.list_physical_devices('CPU')
-    print(f'gpus {gpus}')
-    print(f'cpus {cpus}')
-    if gpus:
-        if system == "Windows":
-            print(tf.test.gpu_device_name())
-            tf.config.set_logical_device_configuration(
-                gpus[0],
-                [tf.config.LogicalDeviceConfiguration(memory_limit=2800)]
-            )
-
-    def get_available_devices():
-        local_device_protos = device_lib.list_local_devices()
-        return [x.name for x in local_device_protos]
-
-    print(get_available_devices())
-    #tf.debugging.set_log_device_placement(True)
-    gpus = tf.config.list_logical_devices('GPU')
-    #strategy = tf.distribute.MirroredStrategy(cpus)
-    skf = StratifiedKFold(n_splits=5, shuffle=True)
-    histories = list()
-    #with strategy.scope():
-
-    # for index, (train_indices, val_indices) in enumerate(skf.split(x_adj, y_adj)):
-    for index in range(1):
-        print("Training on fold " + str(index + 1) + "/5...")
-        # Generate batches from indices
-        if True:    # index == 0:
-            if reshuffle:
-                # bins = np.linspace(min(y_adj), max(y_adj), 5)
-                # y_binned = np.digitize(y_adj, bins)
-
-                xtrain, xval, ytrain, yval = train_test_split(x_adj, y_adj, test_size=0.2, shuffle=True)
-                # stratify=y_binned)
-                # xtrain, xval = [train_indices], x_adj[val_indices]
-                # ytrain, yval = y_adj[train_indices], y_adj[val_indices]
-                # ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
-                # graph(xtrain[0], hold_g=ytrain.T[0], start_g=timesteps, len_g=50, col_type=0)
-                np.save(f'xtrain_{tag}', xtrain, allow_pickle=True)
-                np.save(f'ytrain_{tag}', ytrain, allow_pickle=True)
-                np.save(f'xval_{tag}', xval, allow_pickle=True)
-                np.save(f'yval_{tag}', yval, allow_pickle=True)
-
-            xtrain, xval = np.load(f'xtrain_{tag}.npy', allow_pickle=True), \
-                np.load(f'xval_{tag}.npy', allow_pickle=True)
-            ytrain, yval = np.load(f'ytrain_{tag}.npy', allow_pickle=True), \
-                np.load(f'yval_{tag}.npy', allow_pickle=True)
-            for lr in range(1, 3):
-                model = build_model(xtrain, learning_rate=0.05/(pow(2, lr)))
-                checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
-                if os.path.isfile(checkpoint_filepath) and use_checkpoints:
-                    model.load_weights(checkpoint_filepath)
-                model_checkpoint_callback = ModelCheckpoint(
-
-                    filepath=checkpoint_filepath,
-                    save_weights_only=True,
-                    monitor='val_loss',
-                    mode='min',
-                    save_best_only=True)
-                history = model.fit(xtrain, ytrain,
-                                    epochs=150,
-                                    batch_size=512,
-                                    shuffle=True,
-                                    validation_data=(xval, yval),
-                                    callbacks=[model_checkpoint_callback])
-                #model.load_weights(checkpoint_filepath)
-                y_pred_p = model.predict(xval)
-                histories.append(history)
-                plothistories([history], y_pred_p, yval)
-            # model.save(f'models/lstm_model_{tag}_{index}.h5', save_format='h5')
-            model.save('my_model.keras')
-
-    ind = 0
-    for history in histories:
-        np.save(f'histories_{tag}_{ind}', history.history['loss'], allow_pickle=True)
-        np.save(f'histories_{tag}_{ind}', history.history['val_loss'], allow_pickle=True)
-        ind += 1
-    #   X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
-    #   X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
-
 
 def shape_data(x_s, y_s, training):
     # scale data
@@ -439,7 +291,7 @@ def shape_data(x_s, y_s, training):
     else:
         pass
         # scaler = joblib.load('models/scaler.dump')
-    # x_s = scaler.fit_transform(x_s)
+    x_s = scaler.fit_transform(x_s)
     if training:
         if not os.path.exists('models'):
             os.mkdir('models')
@@ -473,45 +325,7 @@ def normalise(x_n):
 
 
 # @keras.saving.register_keras_serializable()
-def build_model(x_adj, learning_rate):
-    # first layer
-    model = Sequential()
-    model.add(LSTM(20,
-                   input_shape=(x_adj.shape[1], x_adj.shape[2]),
-                   return_sequences=True))
-                   #kernel_regularizer=reg.L1(0.01)))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.2))
 
-    # second layer
-    #model.add(LSTM(30, return_sequences=True, kernel_regularizer=reg.L1(0.01)))
-    #model.add(BatchNormalization())
-    #model.add(Dropout(0.2))
-    model.add(LSTM(40, return_sequences=False))#, kernel_regularizer=reg.L1(0.01)))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.2))
-
-    #model.add(Dense(10, activation='linear'))  # kernel_regularizer=regularizers.L1(0.01)
-    #model.add(AlphaDropout(0.5))
-    # fourth layer and output
-    model.add(Dense(1, activation='relu'))    # kernel_regularizer=regularizers.L1(0.01)
-
-    optimizer = keras.optimizers.Nadam(learning_rate=learning_rate,
-                                       beta_1=0.9,
-                                       beta_2=0.999,
-                                       decay=0.004)
-
-    model.compile(loss='mse', metrics=[keras.metrics.RootMeanSquaredError()], optimizer = optimizer )
-
-    # model.add(Dense(20, activation='relu'))
-    # model.add(Dense(2, activation='softmax'))
-
-    # compile layers
-    # model.compile(loss='categorical_crossentropy',
-    #              optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
-    #              metrics=['accuracy'])
-
-    return model
 
 
 def strategy_bench(preds, start_pos, verb=False):
@@ -689,10 +503,10 @@ def bench_cand(pred):
 
 
 if __name__ == '__main__':
-    start = '01 Jan 2023'
+    start = '01 Jan 2017'
     end = '08 Apr 2024'
-    load_data = True
-    reshuffle = True
+    load_data = False
+    reshuffle =False
     train = True
     predict = True
     bench = True
@@ -742,7 +556,7 @@ if __name__ == '__main__':
     xn, y_n = shape_data(xn, y_n, training=True)
     if train:
         #   ensure equal number of labels, shuffle, and split
-        shuffle_and_train(xp, y_p, 'pos')
+        shuffle_and_train(xp, y_p, 'pos', reshuffle=reshuffle)
         # shuffle_and_train(xn, y_n, 'neg')
 
     #   print(model.summary())

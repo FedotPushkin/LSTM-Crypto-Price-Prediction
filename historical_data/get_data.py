@@ -82,7 +82,7 @@ def get_data_files(start, end, interval):
     #   calc_color_prob(isredlongtail)
     #   calc_color_prob(isredlonghead)
     sns.set_theme(style="whitegrid")
-    dates = pd.date_range(start=start, periods=len(hist), freq="H")
+    dates = pd.date_range(start=start, periods=len(hist), freq="h")
     candles['Date'] = np.array(dates.to_pydatetime(), dtype=np.datetime64)
 
     #   data = pd.DataFrame(candles, dates)
