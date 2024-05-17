@@ -4,10 +4,12 @@ import platform
 import tensorflow as tf
 import numpy as np
 import os
+from collections import Counter
 from sklearn.model_selection import StratifiedKFold
 from keras.callbacks import ModelCheckpoint
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+from keras.utils import to_categorical
 def plothistories(histories, y_pred_p, yval_p):
     for history in histories:
         # summarize history for accuracy
@@ -41,10 +43,10 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
     # count_1 = np.count_nonzero(y_adj)
     # count_0 = y_adj.shape[0] - count_1
     # cut = min(count_0, count_1)
-    use_checkpoints = True
+    use_checkpoints = False
     # save some data for testing
     # train_idx = int(cut * split)
-    if 0:#reshuffle:
+    if reshuffle:
 
         # shuffle data
         np.random.seed(42)
@@ -53,7 +55,7 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
 
         # find indexes of each label
         idx_1 = np.argwhere(y_adj > 0).flatten()
-        idx_0 = np.argwhere(y_adj < 0).flatten()
+        idx_0 = np.argwhere(y_adj == 0).flatten()
 
         shuffle_1 = np.random.permutation(len(idx_1))
         shuffle_0 = np.random.permutation(len(idx_0))
@@ -72,6 +74,9 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
 
         # shuffle again to mix labels
         np.random.seed(42)
+
+        cp = Counter(y_adj)
+        print(f'balanced pos {cp.most_common(2)}')
         shuffle_index = np.random.permutation(x_adj.shape[0])
         x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
         bal = Counter(y_adj)
@@ -125,7 +130,9 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
                 np.load(f'xval_{tag}.npy', allow_pickle=True)
             ytrain, yval = np.load(f'ytrain_{tag}.npy', allow_pickle=True), \
                 np.load(f'yval_{tag}.npy', allow_pickle=True)
-            for lr in range(1, 10):
+
+            ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
+            for lr in range(1, 3):
                 model = build_model(xtrain, learning_rate=0.009/(pow(2, lr)))
                 checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
                 if os.path.isfile(checkpoint_filepath) and use_checkpoints:
@@ -134,12 +141,12 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
 
                     filepath=checkpoint_filepath,
                     save_weights_only=True,
-                    monitor='val_loss',
-                    mode='min',
+                    monitor='val_accuracy',
+                    mode='max',
                     save_best_only=True)
                 history = model.fit(xtrain, ytrain,
                                     epochs=100,
-                                    batch_size=2048,
+                                    batch_size=256,
                                     shuffle=True,
                                     validation_data=(xval, yval),
                                     callbacks=[model_checkpoint_callback])

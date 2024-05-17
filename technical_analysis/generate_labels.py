@@ -28,7 +28,7 @@ class Genlabels(object):
         self.savgol = self.apply_filter(deriv=0, hist=self.hist)
         self.savgol_deriv = self.apply_filter(deriv=1, hist=self.hist)
 
-        self.labels = self.savgol_deriv
+        self.labels = self.cont_to_disc()
 
     def apply_filter(self, deriv, hist):
         # apply a Savitzky-Golay filter to historical prices
