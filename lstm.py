@@ -24,7 +24,7 @@ if __name__ == '__main__':
     load_data = False
     reshuffle = False
     train = False
-    predict = False
+    predict = True
     bench = True
     regress = False
     validation_length = 1000
@@ -103,7 +103,7 @@ if __name__ == '__main__':
                 lstm_pred = lstm.predict(X_val, batch_size=1)
                 d = lstm_pred[0][0]
                 y_strat_p.append(d)
-                print(f'epoch {v} of 1000')
+                print(f'prediction of candle {v} of 1000')
                 #close = candles.iloc[-validation_length + v + timesteps][1]
                 #open = candles.iloc[-validation_length + v + timesteps][0]
                 #re = (close - open) / open
@@ -217,11 +217,11 @@ if __name__ == '__main__':
         #if (y_pred_p[i] > 0.5 and savgol_deriv[i+validation_lag+timesteps]>0.5) \
         #        or (y_pred_p[i] < 0.5 and savgol_deriv[i +validation_lag+timesteps] < 0.5):
 
-        if (y_pred_p[i] < 0.4 and labels_p[i+lag] > 0.5) \
-                or (y_pred_p[i] > 0.6 and labels_p[i+lag] < 0.5):
+        if (y_pred_p[i] < 0.5 and labels_p[i+lag] > 0.5) \
+                or (y_pred_p[i] > 0.5 and labels_p[i+lag] < 0.5):
             hit += 1
-        elif (y_pred_p[i] >= 0.4 and labels_p[i+lag] > 0.5) \
-                or (y_pred_p[i] <= 0.6 and labels_p[i+lag] < 0.5):
+        else:#if (y_pred_p[i] >= 0.4 and labels_p[i+lag] > 0.5) \
+                #or (y_pred_p[i] <= 0.6 and labels_p[i+lag] < 0.5):
           miss += 1
     print(f'savg res {hit / (hit + miss)}')
     target = []

@@ -154,8 +154,8 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
                     save_best_only=True)
                 with tf.device('/gpu:0'):
                     history = model.fit(xtrain, ytrain,
-                                        epochs=10,
-                                        batch_size=1024,
+                                        epochs=50,
+                                        batch_size=4096,
                                         shuffle=True,
                                         validation_data=(xval, yval),
                                         callbacks=[model_checkpoint_callback])

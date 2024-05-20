@@ -9,8 +9,8 @@ def build_model(x_adj, learning_rate):
     model.add(LSTM(20,
                    input_shape=(x_adj.shape[1], x_adj.shape[2]),
                    return_sequences=True,
-                   recurrent_regularizer=reg.L1(0.0001),
-                   kernel_regularizer=reg.L1(0.0001)))#,
+                   recurrent_regularizer=reg.L1(0.000001),
+                   kernel_regularizer=reg.L1(0.000001)))#,
                    #recurrent_dropout=0.05))
     model.add(BatchNormalization())
     #model.add(Dropout(0.15))
@@ -19,13 +19,13 @@ def build_model(x_adj, learning_rate):
     #model.add(LSTM(100, return_sequences=True, kernel_regularizer=reg.L1(0.005)))
     #model.add(BatchNormalization())
     #model.add(Dropout(0.2))
-    model.add(LSTM(40, return_sequences=False, recurrent_regularizer=reg.L1(0.0001), kernel_regularizer=reg.L1(0.0001), ))
+    model.add(LSTM(40, return_sequences=False, recurrent_regularizer=reg.L1(0.000001), kernel_regularizer=reg.L1(0.000001), ))
     model.add(BatchNormalization())
     #model.add(Dropout(0.15))
 
-    model.add(Dense(20, activation='relu', kernel_regularizer=reg.L1(0.01)))
+    model.add(Dense(20, activation='relu', kernel_regularizer=reg.L1(0.0001)))
     #model.add(AlphaDropout(0.5))
-    model.add(Dropout(0.1))
+    model.add(Dropout(0.001))
     # fourth layer and output
     #model.add(Dense(1, activation='linear'))    # kernel_regularizer=regularizers.L1(0.01)
 
