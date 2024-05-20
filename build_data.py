@@ -129,6 +129,7 @@ def build_val_data(data):
                    sar_d,
                    # sar_u,
                    aru - ard,
+                   ard,
                    obv,
                    # sar_u,
                    # op,

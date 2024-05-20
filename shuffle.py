@@ -10,16 +10,28 @@ from keras.callbacks import ModelCheckpoint
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from keras.utils import to_categorical
+from sklearn.metrics import auc
+from sklearn.metrics import roc_curve
 def plothistories(histories, y_pred_p, yval_p):
     for history in histories:
         # summarize history for accuracy
 
         # summarize history for loss
-        plt.figure(2)
+
+        plt.subplot(2, 1, 1)
         plt.plot(history.history['loss'])
         plt.plot(history.history['val_loss'])
         plt.title('model loss')
         plt.ylabel('loss')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'test'], loc='upper left')
+
+
+        plt.subplot(2, 1, 2)
+        plt.plot(history.history['accuracy'])
+        plt.plot(history.history['val_accuracy'])
+        plt.title('model accuracy')
+        plt.ylabel('accuracy')
         plt.xlabel('epoch')
         plt.legend(['train', 'test'], loc='upper left')
         plt.show()
@@ -28,14 +40,14 @@ def plothistories(histories, y_pred_p, yval_p):
 
         # auc_keras = auc(fpr_keras, tpr_keras)
 
-        plt.figure(3)
-        plt.plot([0, 1], [0, 1], 'k--')
+        #plt.figure(3)
+        #plt.plot([0, 1], [0, 1], 'k--')
         # plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
         # plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
-        plt.xlabel('False positive rate')
-        plt.ylabel('True positive rate')
-        plt.title('ROC curve')
-        plt.legend(loc='best')
+        #plt.xlabel('False positive rate')
+        #plt.ylabel('True positive rate')
+        #plt.title('ROC curve')
+        #plt.legend(loc='best')
         # plt.show()
 
 def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
@@ -43,18 +55,17 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
     # count_1 = np.count_nonzero(y_adj)
     # count_0 = y_adj.shape[0] - count_1
     # cut = min(count_0, count_1)
-    use_checkpoints = False
+    use_checkpoints = True
     # save some data for testing
     # train_idx = int(cut * split)
     if reshuffle:
-
-        # shuffle data
+        # balance 50/50 and shuffle pos and neg examples
         np.random.seed(42)
         shuffle_index = np.random.permutation(x_adj.shape[0])
         x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
 
         # find indexes of each label
-        idx_1 = np.argwhere(y_adj > 0).flatten()
+        idx_1 = np.argwhere(y_adj == 1).flatten()
         idx_0 = np.argwhere(y_adj == 0).flatten()
 
         shuffle_1 = np.random.permutation(len(idx_1))
@@ -74,39 +85,36 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
 
         # shuffle again to mix labels
         np.random.seed(42)
-
         cp = Counter(y_adj)
         print(f'balanced pos {cp.most_common(2)}')
         shuffle_index = np.random.permutation(x_adj.shape[0])
         x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
         bal = Counter(y_adj)
-        print(bal.most_common(2))
-    system = platform.system()
+        print(f'balanced examples: {bal.most_common(2)}')
     gpus = tf.config.list_physical_devices('GPU')
     cpus = tf.config.list_physical_devices('CPU')
-    print(f'gpus {gpus}')
-    print(f'cpus {cpus}')
-    if gpus:
-        if system == "Windows":
-            print(tf.test.gpu_device_name())
-            tf.config.set_logical_device_configuration(
-                gpus[0],
-                [tf.config.LogicalDeviceConfiguration(memory_limit=2800)]
-            )
-
     def get_available_devices():
         local_device_protos = device_lib.list_local_devices()
         return [x.name for x in local_device_protos]
 
-    print(get_available_devices())
+    print(f'available devices: {get_available_devices()}')
+    if gpus:
+        if platform.system() == "Windows":
+            print(f'will compute on {tf.test.gpu_device_name()}')
+            #tf.config.set_logical_device_configuration(
+            #    gpus[0],
+            #    [tf.config.LogicalDeviceConfiguration(memory_limit=2800)]
+            #)
+
+
     #tf.debugging.set_log_device_placement(True)
-    gpus = tf.config.list_logical_devices('GPU')
     #strategy = tf.distribute.MirroredStrategy(cpus)
     skf = StratifiedKFold(n_splits=5, shuffle=True)
     histories = list()
     #with strategy.scope():
 
     # for index, (train_indices, val_indices) in enumerate(skf.split(x_adj, y_adj)):
+    # following code is for kfold
     for index in range(1):
         print("Training on fold " + str(index + 1) + "/5...")
         # Generate batches from indices
@@ -132,8 +140,8 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
                 np.load(f'yval_{tag}.npy', allow_pickle=True)
 
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
-            for lr in range(1, 3):
-                model = build_model(xtrain, learning_rate=0.009/(pow(2, lr)))
+            for lr in range(1, 2):
+                model = build_model(xtrain, learning_rate=0)    # 0.009/(pow(2, lr)))
                 checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
                 if os.path.isfile(checkpoint_filepath) and use_checkpoints:
                     model.load_weights(checkpoint_filepath)
@@ -144,12 +152,13 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle):
                     monitor='val_accuracy',
                     mode='max',
                     save_best_only=True)
-                history = model.fit(xtrain, ytrain,
-                                    epochs=100,
-                                    batch_size=256,
-                                    shuffle=True,
-                                    validation_data=(xval, yval),
-                                    callbacks=[model_checkpoint_callback])
+                with tf.device('/gpu:0'):
+                    history = model.fit(xtrain, ytrain,
+                                        epochs=10,
+                                        batch_size=1024,
+                                        shuffle=True,
+                                        validation_data=(xval, yval),
+                                        callbacks=[model_checkpoint_callback])
                 model.load_weights(checkpoint_filepath)
                 y_pred_p = model.predict(xval)
                 histories.append(history)
