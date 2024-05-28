@@ -8,14 +8,15 @@ import matplotlib.pyplot as plt
 from generate_labels import Genlabels
 from build_data import build_tt_data, build_val_data, shape_data
 from shuffle import shuffle_and_train
-from xgboost import XGBRegressor, XGBClassifier
+from xgboost import XGBClassifier  # XGBRegressor
+
 from get_data import get_data_files
 from graph import graph
+from strategy_benchmark import strategy_bench
 
 # sys.path.append(os.path.join('C:/', 'Users', 'Fedot', 'Downloads', 'LSTM-Crypto-Price-Prediction', 'historical_data'))
 # sys.path.append(os.path.join('historical_data'))
-#os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 # @keras.saving.register_keras_serializable()
 
 if __name__ == '__main__':
@@ -24,14 +25,15 @@ if __name__ == '__main__':
     load_data = False
     reshuffle = False
     train = False
-    predict = True
+    predict = False
+    calc_xval = False
     bench = True
-    regress = False
-    validation_length = 1000
+    regression = True
+    validation_length = 40000
     validation_lag = 30
     timesteps = 15
     if load_data:
-        candles = get_data_files(start, end, 60)
+        candles = get_data_files(start, end, 15)
         np.save('candles', candles, allow_pickle=True)
         cl = np.load("hist_cl.npy")
         op = np.load("hist_op.npy")
@@ -42,13 +44,19 @@ if __name__ == '__main__':
         date = np.load("Date.npy")
 
         candles = pd.DataFrame({'open': op, 'close': cl, 'high': hi, 'low': lo, 'mean': res, 'vol': vol, 'Date': date})
-        X = build_tt_data(candles)
-        labels_p, labels_n = Genlabels(candles['close'], window=25, polyorder=3).labels
-        cp = Counter(labels_p)
-        # labels_n = []
-        cn = Counter(labels_n)
-        print(f'initial pos {cp.most_common(2)}')
-        print(f'initial neg {cn.most_common(2)}')
+        X = build_tt_data(candles, validation_length=validation_length)
+        labels_p = Genlabels(candles['close'], window=25, polyorder=3).labels
+        labels_n = []
+        if regression:
+            cp = Counter(num > 0 for num in labels_p)
+
+            print(f'initial positive examples % {100*cp[True]/(cp[True]+cp[False]):.2f}')
+        else:
+            cp = Counter(labels_p)
+            # cn = Counter(labels_n)
+            # print(f'initial pos {cp.most_common(2)}')
+            # print(f'initial neg {cn.most_common(2)}')
+
         y_p = labels_p[31:1 - validation_length]
         y_n = labels_n[31:1 - validation_length]
         # graph(X, start_g=31, hold_g=y, len_g=100, col_type=1)
@@ -70,7 +78,7 @@ if __name__ == '__main__':
     xp = X
     xn = X
     xp, y_p = shape_data(xp, y_p, training=True)
-    xn, y_n = shape_data(xn, y_n, training=True)
+    # xn, y_n = shape_data(xn, y_n, training=True)
     if train:
         #   ensure equal number of labels, shuffle, and split
         shuffle_and_train(xp, y_p, 'pos', reshuffle=reshuffle)
@@ -84,38 +92,48 @@ if __name__ == '__main__':
         # y_val_n = to_categorical(y_val_n, 2)
 
         def predict(tag):
+            if calc_xval:
+                y_strat_p = list()
+                # y_strat_p.append([])
+                y_strat_n = list()
+                # y_strat_n.append([])
+                # for models in range(1):
+                # up, down = False, False
+                # lstm = load_model(f'models/lstm_model_{tag}_{models}.h5')
 
-            y_strat_p = list()
-            #y_strat_p.append([])
-            y_strat_n = list()
-            #y_strat_n.append([])
-            # for models in range(1):
-            adding = True
-            lencount = 1
-            up, down = False, False
-            # lstm = load_model(f'models/lstm_model_{tag}_{models}.h5')
-            lstm = load_model(f'my_model.keras')
-            for v in range(validation_length - validation_lag - 2*timesteps):
-                val_input = candles.iloc[-validation_length+v:-validation_length+v+validation_lag+timesteps]
-                X_val = build_val_data(data=val_input)
-                # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
-                X_val, _ = shape_data(X_val, [0], training=False)
-                lstm_pred = lstm.predict(X_val, batch_size=1)
-                d = lstm_pred[0][0]
-                y_strat_p.append(d)
-                print(f'prediction of candle {v} of 1000')
-                #close = candles.iloc[-validation_length + v + timesteps][1]
-                #open = candles.iloc[-validation_length + v + timesteps][0]
-                #re = (close - open) / open
-                #if d > 0:
+                x_val = list()
+                lstm = load_model(f'my_model.keras')
+                for v in range(validation_length - validation_lag - 2*timesteps):
+                    val_input = candles.iloc[-validation_length+v:-validation_length+v+validation_lag+timesteps]
+                    x_val_single = build_val_data(data=val_input)
+                    # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
+                    x_val_single, _ = shape_data(x_val_single, [0], training=False)
+                    x_val.append(x_val_single)
 
-                # u = X_val[0][14][1]
-                # y_strat[models].append(u if (np.isnan(d)) else d)
-                # lstm_pred[0]
-            y_strat_p = pd.DataFrame(y_strat_p)
-            y_strat_n = pd.DataFrame(y_strat_n)
-            np.save(f'y_strat_{tag}_p', y_strat_p, allow_pickle=True)
-            np.save(f'y_strat_{tag}_n', y_strat_n, allow_pickle=True)
+                    lstm_pred = lstm.predict(x_val_single, batch_size=1)
+                    d = lstm_pred[0]
+                    y_strat_p.append(d)
+                    print(f'adding val data for  candle {v} of {validation_length}')
+                    # close = candles.iloc[-validation_length + v + timesteps][1]
+                    # open = candles.iloc[-validation_length + v + timesteps][0]
+                    # re = (close - open) / open
+                    # if d > 0:
+
+                    # u = X_val[0][14][1]
+                    # y_strat[models].append(u if (np.isnan(d)) else d)
+                    # lstm_pred[0]
+                # np.save(f'X_val', X_val, allow_pickle=True)
+                y_strat_p = pd.DataFrame(y_strat_p)
+                y_strat_n = pd.DataFrame(y_strat_n)
+                np.save(f'y_strat_{tag}_p', y_strat_p, allow_pickle=True)
+                np.save(f'y_strat_{tag}_n', y_strat_n, allow_pickle=True)
+            else:
+                # X_val = np.load(f'X_val.npy', allow_pickle=True)
+                print(f'xval loaded')
+                # newxval=list()
+            # for i in range(X_val.shape[0]):
+                # newxval.append(X_val[i][0])
+            # newxval = pd.DataFrame( np.array(newxval))
 
 
         predict('pos')
@@ -133,11 +151,11 @@ if __name__ == '__main__':
             vec_p = np.nanmean(column)
 
             y_pred.append(vec_p)    # statistics.mean(vec))
-            tempsum = 0
-            sums = []
-            for pr in range(12, len(y_pred)):
-                tempsum += y_pred[pr]
-                sums.append(tempsum)
+            # tempsum = 0
+            # sums = []
+            # for pr in range(12, len(y_pred)):
+            #    tempsum += y_pred[pr]
+            #    sums.append(tempsum)
 
         return y_pred
 
@@ -149,7 +167,26 @@ if __name__ == '__main__':
     #   y_pred=preds
     #   k =y_pred[1]
     #   y_pred_keras = keras_model.predict(X_test).ravel()
-    def binarypreds(pred):
+
+    y_pred_p = np.array(getpreds('p'))
+    y_pred_n = np.array(getpreds('n'))
+    plt.figure(1)
+    plt.plot(y_pred_p)
+    plt.title('profit ')
+    plt.ylabel('sum roi')
+    plt.xlabel('pred value(0.3-0.9')
+    # plt.show()
+    plt.figure(2)
+    plt.plot(y_pred_n)
+    plt.title('profit ')
+    plt.ylabel('sum roi')
+    plt.xlabel('pred value(0.3-0.9')
+    # plt.show()
+    # y_pred_n = np.array(binarypreds(getpreds('neg')))
+    # y_pred_p = y_pred_p - y_pred_n
+
+
+    def preds2binary(pred):
         if np.isnan(pred):
             return
         for v in range(len(pred)):
@@ -165,26 +202,11 @@ if __name__ == '__main__':
 
     def addnones(pred):
         for _ in range(timesteps + validation_lag):
-            pred = np.insert(pred, 0, None, axis=0)
+            pred = np.insert(pred, 0, axis=0)
         for _ in range(timesteps):
-            pred = np.append(pred, None)
+            pred = np.append(pred, np.nan)
         return pred
-    y_pred_p = np.array(getpreds('p'))
-    y_pred_n = np.array(getpreds('n'))
-    plt.figure(1)
-    plt.plot(y_pred_p)
-    plt.title('profit ')
-    plt.ylabel('sum roi')
-    plt.xlabel('pred value(0.3-0.9')
-    plt.show()
-    plt.figure(2)
-    plt.plot(y_pred_n)
-    plt.title('profit ')
-    plt.ylabel('sum roi')
-    plt.xlabel('pred value(0.3-0.9')
-    plt.show()
-    # y_pred_n = np.array(binarypreds(getpreds('neg')))
-    # y_pred_p = y_pred_p - y_pred_n
+
 
     def makegrad(pred):
         grad = []
@@ -195,7 +217,7 @@ if __name__ == '__main__':
         return grad
 
 
-    #grad_pred_p = makegrad(y_pred_p)
+    # grad_pred_p = makegrad(y_pred_p)
     # grad_pred_n = makegrad(y_pred_n)
     # y_pred_p = np.delete(y_pred_p, y_pred_p.shape[0] - 1)
     # y_pred_n = np.delete(y_pred_n, y_pred_n.shape[0] - 1)
@@ -210,25 +232,25 @@ if __name__ == '__main__':
     candles_val = candles[-validation_length:-timesteps]
     savgol = Genlabels(candles_val[1], window=25, polyorder=3).apply_filter(deriv=0, hist=candles_val[1])
     savgol_deriv = Genlabels(candles_val[1], window=25, polyorder=3).apply_filter(deriv=1, hist=candles_val[1])
-    labels_p, labels_n = Genlabels(candles[1], window=25, polyorder=3).labels
+    labels_p = Genlabels(candles[1], window=25, polyorder=3).labels
     lag = labels_p.shape[0]-validation_length+validation_lag+timesteps
     for i in range(validation_length - validation_lag - 2 * timesteps-1):
 
-        #if (y_pred_p[i] > 0.5 and savgol_deriv[i+validation_lag+timesteps]>0.5) \
+        # if (y_pred_p[i] > 0.5 and savgol_deriv[i+validation_lag+timesteps]>0.5) \
         #        or (y_pred_p[i] < 0.5 and savgol_deriv[i +validation_lag+timesteps] < 0.5):
 
-        if (y_pred_p[i] < 0.5 and labels_p[i+lag] > 0.5) \
-                or (y_pred_p[i] > 0.5 and labels_p[i+lag] < 0.5):
+        if (y_pred_p[i] > 30 and labels_p[i+lag] > 0) \
+                or (y_pred_p[i] < -30 and labels_p[i+lag] < 0):
             hit += 1
-        else:#if (y_pred_p[i] >= 0.4 and labels_p[i+lag] > 0.5) \
-                #or (y_pred_p[i] <= 0.6 and labels_p[i+lag] < 0.5):
-          miss += 1
+        elif (y_pred_p[i] > 30 and labels_p[i+lag] < 0) \
+                or (y_pred_p[i] < -30 and labels_p[i+lag] > 0):
+            miss += 1
     print(f'savg res {hit / (hit + miss)}')
     target = []
-    for i in range(validation_lag+timesteps, validation_length-timesteps):
-        # target.append((candles[1][i]-candles[0][i])/candles[0][i])
-        # target.append((candles[1][i] > candles[0][i]) )
-        target.append(1 if savgol_deriv[i] > 0.0 else 0)
+    # for i in range(validation_lag+timesteps, validation_length-timesteps):
+    # target.append((candles[1][i]-candles[0][i])/candles[0][i])
+    # target.append((candles[1][i] > candles[0][i]) )
+    # target.append(1 if savgol_deriv[i] > 0.0 else 0)
     # x_train_xg = np.array([y_pred_p[:-100], y_pred_n[:-100],
     # np.array(grad_pred_p)[:-100], np.array(grad_pred_n)[:-100]]).T
     # x_test_xg = np.array([y_pred_p[-100:], y_pred_n[-100:],
@@ -240,14 +262,14 @@ if __name__ == '__main__':
         # create model instance
         bst = XGBClassifier()
         # fit model
-        history = bst.fit(train_data, targets)
-        print("Training score: ", bst.score(train_data, targets))
+        # history = bst.fit(train_data, targets)
+        # print("Training score: ", bst.score(train_data, targets))
         # make predictions
         return bst
     # y_trainxg = target[1:-100]
     # xg = trainxg(x_train_xg, y_trainxg)
     roi_preds = []  # xg.predict(x_test_xg)
-    hit, miss = 0, 0
+    # hit, miss = 0, 0
     for i in range(100):
         pass
         #   if (not roi_preds[i] and not target[-100+i]) or (roi_preds[i] and target[-100+i]) :
@@ -294,15 +316,30 @@ if __name__ == '__main__':
 
         # random_guess(y_pred)
         start = candles.shape[0] - validation_length+validation_lag+timesteps
-        # _, __, holding_m = strategy_bench(preds=y_pred_p, start_pos=start, verb=True)
-        # np.save("holding", holding_m, allow_pickle=True)
+        best = -10000000
+        hold_best = []
+        params = [0, 0]
+        for i in range(3, 9):
+            for j in range(3, 9):
+                result, __, holding_m = strategy_bench(preds=y_pred_p,
+                                                       start_pos=start,
+                                                       verb=True,
+                                                       deltab=i*10,
+                                                       deltas=j*10)
+                if result > best:
+                    best = result
+                    hold_best = holding_m
+                    params[0] = i
+                    params[1] = j
+        print(f'best score at {params}, result {best}')
+        np.save("holding", hold_best, allow_pickle=True)
         # start = len(candles) - validation_length
         # np.save("start", [start], allow_pickle=True)
     else:
         start = len(candles[6]) - 100
         holding_m = np.load("holding.npy")
-        start = np.load("start.npy")[0]
-        start = len(candles[6]) - 100
+        # start = np.load("start.npy")[0]
+
     # bench_cand(y_pred_p)
     # bench_cand(y_pred_n)
     start = candles.shape[0] - validation_length
