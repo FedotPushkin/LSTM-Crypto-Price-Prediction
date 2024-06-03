@@ -5,48 +5,54 @@ from rsi import StochRsi
 from dpo import Dpo
 from coppock import Coppock
 from ta.volatility import BollingerBands
-from ta.trend import PSARIndicator, AroonIndicator
+from ta.trend import PSARIndicator, AroonIndicator, ema_indicator, sma_indicator
 from ta.volume import OnBalanceVolumeIndicator
-from sklearn.preprocessing import StandardScaler
+
+from sklearn.preprocessing import RobustScaler, MinMaxScaler
 import joblib
 import os
-# from ta.momentum import AwesomeOscillatorIndicator
-validation_lag = 30
-timesteps = 15
+from ta.momentum import AwesomeOscillatorIndicator
+from sklearn.preprocessing import StandardScaler
 
 
-def build_tt_data(data, validation_length):
+def build_tt_data(data, params):
     # obtain labels
-
+    validation_length, validation_lag, timesteps = params[:-1]
     lo = data.iloc[:-validation_length]['low']
     hi = data.iloc[:-validation_length]['high']
     cl = data.iloc[:-validation_length]['close']
     vol = data.iloc[:-validation_length]['vol']
-    # op = data.iloc[:-validation_length]['open']
+    op = data.iloc[:-validation_length]['open']
     # date = data.iloc[:-validation_length]['Date']
     # obtain features
-    macd = Macd(cl, 6, 12, 3).values
-    stoch_rsi = StochRsi(cl, period=14).hist_values
+    long = 26
+    med = 12
+    short = 9
+    macd = Macd(cl, med, long, short).values
+    ema = ema_indicator(cl, window=long, fillna=False)
+    macd_n = macd/ema
+    stoch_rsi = StochRsi(cl, period=long).hist_values
     x = list(range(cl.shape[0]))
     grad_rsi = np.gradient(stoch_rsi, x)
-    dpo = Dpo(cl, period=4).values
-    cop = Coppock(cl, wma_pd=10, roc_long=6, roc_short=3).values
+    dpo = Dpo(cl, period=short).values/sma_indicator(cl, window=short, fillna=False)
+    cop = Coppock(cl, wma_pd=long, roc_long=med, roc_short=short).values
     grad_cop = np.gradient(cop, x)
-    boll = BollingerBands(close=cl)
-    boll_h = boll.bollinger_hband()
+    boll = BollingerBands(close=cl, window=long)
+    boll_h = boll.bollinger_hband()/boll.bollinger_mavg()
     grad_bolh = np.gradient(boll_h, x)
-    boll_l = boll.bollinger_lband()
+    boll_l = boll.bollinger_lband()/boll.bollinger_mavg()
     grad_boll = np.gradient(boll_l, x)
     psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
-    obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume()
-    ar = AroonIndicator(hi, lo, window=25)
+    sma = sma_indicator(vol, window=long, fillna=False)
+    #obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume()/sma
+    ar = AroonIndicator(hi, lo, window=long)
     aru = ar.aroon_up()
     ard = ar.aroon_down()
     sar_d = psar.psar_down()
     sar_u = psar.psar_up()
     # x_grad = list(range(data.shape[0]-validation_length))
     # inter_slope = PolyInter(cl, progress_bar=True).values
-    # awes = AwesomeOscillatorIndicator(hi, lo, window1=5, window2=34).awesome_oscillator()
+    awes = AwesomeOscillatorIndicator(hi, lo, window1=5, window2=long).awesome_oscillator()/sma
     # sar_di = psar.psar_down_indicator()
     # sar_ui = psar.psar_up_indicator()
     nan_indices = np.isnan(sar_d)
@@ -55,25 +61,26 @@ def build_tt_data(data, validation_length):
             sar_d[ni] = sar_u[ni]
         sar_d[ni] = (sar_d[ni]-cl[ni])/cl[ni]
     # truncate bad values and shift label
-    xe = np.array([macd,
+    xe = np.array([macd_n,
                    stoch_rsi,
                    grad_rsi,
                    sar_d,
                    aru-ard,
-                   ard,
-                   obv,
+                   #ema,
+                   # ard,
+                   #obv,
                    # sar_di,
                    # sar_ui,
-                   # awes,
+                   awes,
                    # sar_u,
-                   # op,
-                   # high,
-                   # low,
-                   # cl,
-                   # vol,
-                   # boll_h,
+                   #op,
+                   #hi,
+                   #lo,
+                   #cl,
+                   #vol,
+                   boll_h,
                    grad_bolh,
-                   # boll_l,
+                   boll_l,
                    grad_boll,
                    grad_cop,
                    dpo,
@@ -86,34 +93,41 @@ def build_tt_data(data, validation_length):
     return xe[validation_lag:]
 
 
-def build_val_data(data):
+def build_val_data(data, params):
     cl = data[1]
     hi = data[2]
     lo = data[3]
     vol = data[5]
     # op = data[0]
-
-    data = np.array(cl)
-    macd = Macd(data, 6, 12, 3).values
-    stoch_rsi = StochRsi(data, period=14).hist_values
+    long = 26
+    med = 12
+    short = 9
+    validation_lag = params[1]
+    data = pd.DataFrame(cl).reset_index()[1]
+    macd = Macd(data, med, long, short).values
+    ema = ema_indicator(data, window=long, fillna=False)
+    macd_n = np.array(macd)/np.array(ema)
+    stoch_rsi = StochRsi(data, period=long).hist_values
     grad_rsi = np.gradient(stoch_rsi, list(range(data.shape[0])))
-    dpo = Dpo(data, period=4).values
-    cop = Coppock(data, wma_pd=10, roc_long=6, roc_short=3).values
+    dpo = Dpo(data, period=short).values / sma_indicator(data, window=short, fillna=False)
+    cop = Coppock(data, wma_pd=long, roc_long=med, roc_short=short).values
     grad_cop = np.gradient(cop, list(range(data.shape[0])))
-    d = pd.DataFrame(data)
-    boll = BollingerBands(close=d[0])
-    boll_h = boll.bollinger_hband()
+    boll = BollingerBands(close=data, window=long)
+    boll_h = boll.bollinger_hband()/boll.bollinger_mavg()
     grad_bolh = np.gradient(boll_h, list(range(data.shape[0])))
-    boll_l = boll.bollinger_lband()
+    boll_l = boll.bollinger_lband()/boll.bollinger_mavg()
     grad_boll = np.gradient(boll_l, list(range(data.shape[0])))
-    psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
+    psar = PSARIndicator(hi, lo, data, step=0.02, max_step=0.2, fillna=False)
     sar_d = psar.psar_down()
     sar_u = psar.psar_up()
-
+    awes = AwesomeOscillatorIndicator(hi, lo, window1=5, window2=long).awesome_oscillator()
+    sma = np.array(sma_indicator(data, window=long, fillna=False))
+    awes_n = np.array(awes)/sma
     nan_indices = np.isnan(sar_d)
     gogo = range(nan_indices.index[0], nan_indices.index[0]+len(nan_indices))
-    obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume()
-    ar = AroonIndicator(hi, lo, window=25)
+    #obv = OnBalanceVolumeIndicator(data, vol).on_balance_volume()
+    #obv_n = np.array(obv)/sma
+    ar = AroonIndicator(hi, lo, window=long)
     aru = ar.aroon_up()
     ard = ar.aroon_down()
     # sar_di = psar.psar_down_indicator()
@@ -122,24 +136,25 @@ def build_val_data(data):
     for ind in gogo:
         if nan_indices[ind]:
             sar_d[ind] = sar_u[ind]
-        sar_d[ind] = (sar_d[ind] - cl[ind])/cl[ind]
-    xv = np.array([macd,
+        sar_d[ind] = (sar_d[ind] - data[ind])/data[ind]
+    xv = np.array([macd_n,
                    stoch_rsi,
                    grad_rsi,
                    sar_d,
                    # sar_u,
                    aru - ard,
-                   ard,
-                   obv,
+                   #ard,
+                   #obv_n,
+                   awes_n,
                    # sar_u,
                    # op,
                    #   high,
                    #   low,
                    # cl,
                    # vol,
-                   # boll_h,
+                   boll_h,
                    grad_bolh,
-                   # boll_l,
+                   boll_l,
                    grad_boll,
                    grad_cop,
                    dpo,
@@ -150,21 +165,28 @@ def build_val_data(data):
     return xv[validation_lag:]
 
 
-def shape_data(x_s, y_s, training):
+def shape_data(x_s, y_s, training, params):
+
+    timesteps = params[2]
     # scale data
     if training:
-        scaler = StandardScaler()
-    else:
-        scaler = joblib.load('models/scaler.dump')
-    x_s = scaler.fit_transform(x_s)
-    if training:
+        #scaler = StandardScaler()
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        x_s = scaler.fit_transform(x_s)
+
         if not os.path.exists('models'):
             os.mkdir('models')
         joblib.dump(scaler, 'models/scaler.dump')
+    else:
+
+        scaler = joblib.load('models/scaler.dump')
+        x_s = scaler.fit_transform(x_s)
+
     # reshape data with timesteps
     reshaped = []
     for t in range(timesteps, x_s.shape[0]+1):
         onestep = x_s[t - timesteps:t]
+
         # onestep = scaler.fit_transform(onestep)
         # onestep = normalise(onestep)
         reshaped.append(onestep)
