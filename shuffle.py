@@ -1,3 +1,4 @@
+import pandas as pd
 from tensorflow.python.client import device_lib
 from build_model import build_model
 import platform
@@ -10,11 +11,11 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from keras.utils import to_categorical
 # from sklearn.model_selection import StratifiedKFold
-# from sklearn.metrics import auc
-# from sklearn.metrics import roc_curve
+from sklearn.metrics import auc
+from sklearn.metrics import roc_curve
 
 
-def plothistories(histories, y_pred_p, yval_p, regression):
+def plothistories(histories, regression):
     for history in histories:
         # summarize history for accuracy
 
@@ -43,19 +44,22 @@ def plothistories(histories, y_pred_p, yval_p, regression):
         plt.legend(['train', 'test'], loc='upper left')
         plt.show()
 
-        # fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p.T[0], y_pred_p.T[0])
 
-        # auc_keras = auc(fpr_keras, tpr_keras)
+def plotauc(y_pred_p, yval_p):
 
-        # plt.figure(3)
-        # plt.plot([0, 1], [0, 1], 'k--')
-        # plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
-        # plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
-        # plt.xlabel('False positive rate')
-        # plt.ylabel('True positive rate')
-        # plt.title('ROC curve')
-        # plt.legend(loc='best')
-        # plt.show()
+    fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p, y_pred_p)
+
+    auc_keras = auc(fpr_keras, tpr_keras)
+
+    plt.figure(3)
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
+    plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
+    plt.xlabel('False positive rate')
+    plt.ylabel('True positive rate')
+    plt.title('ROC curve')
+    plt.legend(loc='best')
+    plt.show()
 
 
 def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
@@ -99,7 +103,7 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
             print(f'balanced positive examples % {100*cp[True]/(cp[True]+cp[False]):.2f}')
         else:
             cp = Counter(y_adj)
-            print(f'balanced examples {cp.most_common(2):.2f}')
+            print(f'balanced examples {cp.most_common(2)}')
         shuffle_index = np.random.permutation(x_adj.shape[0])
         x_adj, y_adj = x_adj[shuffle_index], y_adj[shuffle_index]
 
@@ -114,6 +118,7 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
     if gpus:
         if platform.system() == "Windows":
             print(f'will compute on {tf.test.gpu_device_name()}')
+            print(f'eager mode is { tf.executing_eagerly()}')
             #   tf.config.set_logical_device_configuration(
             #    gpus[0],
             #    [tf.config.LogicalDeviceConfiguration(memory_limit=2800)])
@@ -149,10 +154,12 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
         ytrain, yval = np.load(f'ytrain_{tag}.npy', allow_pickle=True), \
             np.load(f'yval_{tag}.npy', allow_pickle=True)
 
-        model = build_model(xtrain, learning_rate=0)  # 0.009/(pow(2, lr)))
+
+        print(f'nans count {np.count_nonzero(np.isnan(xtrain))}')
+        model = build_model(xtrain, regression=regression, learning_rate=0)  # 0.009/(pow(2, lr)))
         if not regression:
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
-        for lr in range(1, 10):
+        for lr in range(1, 2):
 
             checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
             if os.path.isfile(checkpoint_filepath) and use_checkpoints:
@@ -161,8 +168,8 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
                 monitor = 'val_loss'
                 mode = 'min'
             else:
-                monitor = 'val_accuracy',
-                mode = 'max',
+                monitor = 'val_accuracy'
+                mode = 'max'
             model_checkpoint_callback = ModelCheckpoint(
 
                 filepath=checkpoint_filepath,
@@ -172,15 +179,16 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
                 save_best_only=True)
             with tf.device('/gpu:0'):
                 history = model.fit(xtrain, ytrain,
-                                    epochs=50,
-                                    batch_size=4096,
+                                    epochs=10,
+                                    batch_size=8192,
                                     shuffle=True,
                                     validation_data=(xval, yval),
                                     callbacks=[model_checkpoint_callback])
             model.load_weights(checkpoint_filepath)
             y_pred_p = model.predict(xval)
             histories.append(history)
-            plothistories([history], y_pred_p, yval, regression)
+            plothistories([history],  regression)
+            plotauc(y_pred_p.T[0], yval.T[0])
         # model.save(f'models/lstm_model_{tag}_{index}.h5', save_format='h5')
         model.save('my_model.keras')
 

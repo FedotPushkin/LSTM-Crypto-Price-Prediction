@@ -18,7 +18,7 @@ class Genlabels(object):
             sys.exit('Error: {0}'.format(error))   
 
         # это лист из средней цены между опеном и клоузом
-        self.hist = data#['close']
+        self.hist = data  # ['close']
         # здесь долженбыть датафрейм а не лист
         self.candles = data
         self.window = window
@@ -28,8 +28,8 @@ class Genlabels(object):
         self.savgol = self.apply_filter(deriv=0, hist=self.hist)
         self.savgol_deriv = self.apply_filter(deriv=1, hist=self.hist)
 
-        #self.labels = self.cont_to_disc()
-        self.labels = self.savgol_deriv
+        self.labels = self.cont_to_disc()
+        # self.labels = self.savgol_deriv
 
     def apply_filter(self, deriv, hist):
         # apply a Savitzky-Golay filter to historical prices
@@ -39,21 +39,21 @@ class Genlabels(object):
         # encode label as binary (up/down)
         label_pos, label_neg = list(), list()
         for value in self.savgol_deriv:
-            if value >= 0.5:
+            if value > 0:
                 label_pos.append(1)
             else:
                 label_pos.append(0)
-            if value <= -0.5:
+            if value <= -3:
                 label_neg.append(1)
             else:
                 label_neg.append(0)
-        #ct = self.candles.T
-        #for c in range(ct.shape[1]):
-            #if ct[c]['close']/ct[c]['open'] > 1.005:
+        # ct = self.candles.T
+        # for c in range(ct.shape[1]):
+            # if ct[c]['close']/ct[c]['open'] > 1.005:
                 # if ct[c]['close'] > ct[c]['open'] :
-               # label.append(1)
-            #else:
-              #  label.append(0)
+                # label.append(1)
+            # else:
+                # label.append(0)
         return np.array(label_pos), np.array(label_neg)
 
 
