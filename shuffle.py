@@ -1,15 +1,16 @@
 import pandas as pd
 from tensorflow.python.client import device_lib
-from build_model import build_model
+from build_model import build_model, opt_search
 import platform
 import tensorflow as tf
 import numpy as np
 import os
 from collections import Counter
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from keras.utils import to_categorical
+from keras.models import load_model
 # from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import auc
 from sklearn.metrics import roc_curve
@@ -159,17 +160,18 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
         model = build_model(xtrain, regression=regression, learning_rate=0)  # 0.009/(pow(2, lr)))
         if not regression:
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
-        for lr in range(1, 2):
+        checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
+        for lr in range(1, 3):
+            #opt_search(xtrain, ytrain, xval, yval)
 
-            checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
-            if os.path.isfile(checkpoint_filepath) and use_checkpoints:
-                model.load_weights(checkpoint_filepath)
+            #model = load_model(f'best_opt_model.keras')
+
             if regression:
                 monitor = 'val_loss'
                 mode = 'min'
             else:
-                monitor = 'val_accuracy'
-                mode = 'max'
+                monitor = 'val_loss'
+                mode = 'min'
             model_checkpoint_callback = ModelCheckpoint(
 
                 filepath=checkpoint_filepath,
@@ -177,25 +179,39 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
                 monitor=monitor,
                 mode=mode,
                 save_best_only=True)
-            with tf.device('/gpu:0'):
+            early_stop = EarlyStopping(monitor='val_loss',
+                          patience=5,
+                          verbose=1,
+                          restore_best_weights=True)
+            if 1:#with tf.device('/gpu:0'):
+                if os.path.isfile(checkpoint_filepath) and use_checkpoints:
+                    model.load_weights(checkpoint_filepath)
+                    print(f'loaded weights')
                 history = model.fit(xtrain, ytrain,
                                     epochs=10,
                                     batch_size=8192,
                                     shuffle=True,
                                     validation_data=(xval, yval),
-                                    callbacks=[model_checkpoint_callback])
+                                    callbacks=[model_checkpoint_callback,
+                                               #early_stop,
+                                               ReduceLROnPlateau(monitor='val_loss',
+                                                                  factor=0.5,
+                                                                  patience=3,
+                                                                  verbose=1,
+                                                                  min_delta=1e-5,
+                                                                  mode='min')])
             model.load_weights(checkpoint_filepath)
             y_pred_p = model.predict(xval)
             histories.append(history)
             plothistories([history],  regression)
             plotauc(y_pred_p.T[0], yval.T[0])
-        # model.save(f'models/lstm_model_{tag}_{index}.h5', save_format='h5')
+            # model.save(f'models/lstm_model_{tag}_{index}.h5', save_format='h5')
         model.save('my_model.keras')
 
-    ind = 0
-    for history in histories:
-        np.save(f'histories_{tag}_{ind}', history.history['loss'], allow_pickle=True)
-        np.save(f'histories_{tag}_{ind}', history.history['val_loss'], allow_pickle=True)
-        ind += 1
+        ind = 0
+        for history in histories:
+            np.save(f'histories_{tag}_{ind}', history.history['loss'], allow_pickle=True)
+            np.save(f'histories_{tag}_{ind}', history.history['val_loss'], allow_pickle=True)
+            ind += 1
     #   X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
     #   X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]

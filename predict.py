@@ -9,7 +9,7 @@ from build_data import build_val_data, shape_data
 def predict_val(tag, params):
     validation_length, validation_lag, timesteps, regression, calc_xval = params
     candles = pd.DataFrame(np.load('candles.npy', allow_pickle=True))
-    lstm = load_model(f'my_model.keras')
+    lstm = load_model(f'best_opt_model.keras')
     y_strat_p = list()
     y_strat_n = list()
     runs = 0
