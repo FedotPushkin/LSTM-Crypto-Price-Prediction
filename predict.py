@@ -9,11 +9,13 @@ from build_data import build_val_data, shape_data
 def predict_val(tag, params):
     validation_length, validation_lag, timesteps, regression, calc_xval = params
     candles = pd.DataFrame(np.load('candles.npy', allow_pickle=True))
-    lstm = load_model(f'best_opt_model.keras')
+    #lstm = load_model(f'best_opt_model_{tag}.keras')
+    lstm = load_model(f'my_model.keras')
+    #model.load_weights(f'timeseries_bayes_opt_POC/trial_00/checkpoint')
     y_strat_p = list()
     y_strat_n = list()
     runs = 0
-    select, build, shape = 0, 0, 0
+    t_sum = 0
     if calc_xval:
 
         # y_strat_n.append([])
@@ -22,20 +24,22 @@ def predict_val(tag, params):
         # lstm = load_model(f'models/lstm_model_{tag}_{models}.h5')
 
         x_val = np.empty(shape=(1, timesteps, 13))
-        val_sample = 10000
-        for v in range(validation_length - validation_lag - 2 * timesteps):
+        val_sample = 1800
+
+        length = validation_length - validation_lag - timesteps
+        for v in range(length):
             if v > val_sample:
                 continue
             t0 = time.time()
             val_input = candles.iloc[-validation_length + v:-validation_length + v + validation_lag + timesteps]
             x_val_single = build_val_data(data=val_input, params=params)
             # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
-            x_val_single, _ = shape_data(x_val_single, [0], training=False, params=params)
+            x_val_single = shape_data(x_val_single, training=False, params=params)
             x_val = np.append(x_val, x_val_single, axis=0)
             t1 = time.time()
             runs += 1
-            build += t1-t0
-            print(f'adding val data for  candle {v} of {val_sample}')
+            t_sum += t1-t0
+            print(f'adding val data {v} of {val_sample}, eta {t_sum*(val_sample-v)/(60*(v+1)):.2f} min')
 
         x_val = np.delete(x_val, 0, axis=0)
         np.save('x_val', x_val, allow_pickle=True)
@@ -60,7 +64,8 @@ def predict_val(tag, params):
     # y_strat[models].append(u if (np.isnan(d)) else d)
     # lstm_pred[0]
     # np.save(f'X_val', X_val, allow_pickle=True)
-    print(f' build {build:2f} predict {pred_time:2f} ')
+
+    print(f' build {t_sum/60:.2f} sec, predict {pred_time:.2f} sec')
     y_strat_p = pd.DataFrame(y_strat_p)
     y_strat_n = pd.DataFrame(y_strat_n)
     np.save(f'y_strat_{tag}_p', y_strat_p, allow_pickle=True)
@@ -70,7 +75,7 @@ def predict_val(tag, params):
 
 def getpreds(tag):
     y_pred = []
-    y_strat = np.load(f'y_strat_pos_{tag}.npy', allow_pickle=True)
+    y_strat = np.load(f'y_strat_1_p.npy', allow_pickle=True)
 
     for col in range(y_strat.shape[0] - 1):
         column = y_strat[col]
