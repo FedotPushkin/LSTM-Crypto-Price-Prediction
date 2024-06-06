@@ -11,18 +11,41 @@ from ta.volume import OnBalanceVolumeIndicator
 from sklearn.preprocessing import RobustScaler, MinMaxScaler
 import joblib
 import os
+import time
 from ta.momentum import AwesomeOscillatorIndicator
 from sklearn.preprocessing import StandardScaler
 
 
 def build_tt_data(data, params):
+    validation_length, validation_lag, timesteps = params[:3]
+    x_tt = np.empty(shape=(timesteps, 13))
+
+    length = data.shape[0]-validation_length-validation_lag - timesteps
+    if length < validation_lag + timesteps:
+        raise Exception("no tt data, maybe validation_length too big ")
+    sum_time = 0
+    for v in range(length):
+        t0 = time.time()
+        tt_input = data.iloc[v:v + validation_lag + timesteps]
+
+        x_tt_single = np.array(build_tt_piece(data=tt_input, params=params))
+        x_tt = np.append(x_tt, x_tt_single, axis=0)
+        t1 = time.time()
+        sum_time += t1-t0
+        print(f'building train data {v} of {length-1}')
+        print(f'expected to last {sum_time*(length-v)/(60*(v+1)):.2f} minutes, avg lap: {sum_time/(v+1):.2f} sec')
+    x_tt = np.delete(x_tt, [range(timesteps)], axis=0)
+    return x_tt
+
+def build_tt_piece(data, params):
     # obtain labels
-    validation_length, validation_lag, timesteps = params[:-1]
-    lo = data.iloc[:-validation_length]['low']
-    hi = data.iloc[:-validation_length]['high']
-    cl = data.iloc[:-validation_length]['close']
-    vol = data.iloc[:-validation_length]['vol']
-    op = data.iloc[:-validation_length]['open']
+    validation_length, validation_lag, timesteps = params[:3]
+    data = data.reset_index()
+    lo = data.iloc[:]['low'].astype('float64')
+    hi = data.iloc[:]['high'].astype('float64')
+    cl = data.iloc[:]['close'].astype('float64')
+    vol = data.iloc[:]['vol']
+    op = data.iloc[:]['open'].astype('float64')
     # date = data.iloc[:-validation_length]['Date']
     # obtain features
     long = 26
@@ -165,7 +188,7 @@ def build_val_data(data, params):
     return xv[validation_lag:]
 
 
-def shape_data(x_s, y_s, training, params):
+def shape_data(x_s, training, params):
 
     timesteps = params[2]
     # scale data
@@ -184,7 +207,7 @@ def shape_data(x_s, y_s, training, params):
 
     # reshape data with timesteps
     reshaped = []
-    for t in range(timesteps, x_s.shape[0]+1):
+    for t in range(timesteps, x_s.shape[0]+1, timesteps):
         onestep = x_s[t - timesteps:t]
 
         # onestep = scaler.fit_transform(onestep)
@@ -193,12 +216,8 @@ def shape_data(x_s, y_s, training, params):
 
     # account for data lost in reshaping
     x_s = np.array(reshaped)
-    if training:
-        y_t = y_s[timesteps:]
-        y_t = np.append(y_t, np.random.randint(0, 1+1))
-    else:
-        y_t = y_s
-    return x_s, y_t
+
+    return x_s
 
 
 def normalise(x_n):
