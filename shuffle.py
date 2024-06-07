@@ -46,7 +46,7 @@ def plothistories(histories, regression):
         plt.show()
 
 
-def plotauc(y_pred_p, yval_p):
+def plotauc(y_pred_p, yval_p, mess):
 
     fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p, y_pred_p)
 
@@ -58,7 +58,7 @@ def plotauc(y_pred_p, yval_p):
     plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
     plt.xlabel('False positive rate')
     plt.ylabel('True positive rate')
-    plt.title('ROC curve')
+    plt.title(f'ROC curve {mess}')
     plt.legend(loc='best')
     plt.show()
 
@@ -157,11 +157,12 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
 
 
         print(f'nans count {np.count_nonzero(np.isnan(xtrain))}')
-        model = build_model(xtrain, regression=regression, learning_rate=0)  # 0.009/(pow(2, lr)))
+        model = build_model(xtrain, regression=regression, learning_rate=0.003, features=9)  # 0.009/(pow(2, lr)))
         if not regression:
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
-        checkpoint_filepath = f'checkpoint_{tag}_{index}.weights.h5'
-        for lr in range(1, 3):
+        #checkpoint_filepath = f'timeseries_bayes_opt_POC/trial_05/checkpoint'
+        checkpoint_filepath = f'checkpoint.weights.h5'
+        for lr in range(1, 2):
             #opt_search(xtrain, ytrain, xval, yval)
 
             #model = load_model(f'best_opt_model.keras')
@@ -180,38 +181,40 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
                 mode=mode,
                 save_best_only=True)
             early_stop = EarlyStopping(monitor='val_loss',
-                          patience=5,
+                          patience=15,
                           verbose=1,
                           restore_best_weights=True)
+            if os.path.isfile(checkpoint_filepath) and use_checkpoints:
+                model.load_weights(checkpoint_filepath)
+                print(f'loaded weights')
             if 1:#with tf.device('/gpu:0'):
-                if os.path.isfile(checkpoint_filepath) and use_checkpoints:
-                    model.load_weights(checkpoint_filepath)
-                    print(f'loaded weights')
+
                 history = model.fit(xtrain, ytrain,
-                                    epochs=10,
+                                    epochs=300,
                                     batch_size=8192,
                                     shuffle=True,
                                     validation_data=(xval, yval),
                                     callbacks=[model_checkpoint_callback,
-                                               #early_stop,
+                                               early_stop,
                                                ReduceLROnPlateau(monitor='val_loss',
                                                                   factor=0.5,
-                                                                  patience=3,
+                                                                  patience=5,
                                                                   verbose=1,
                                                                   min_delta=1e-5,
                                                                   mode='min')])
-            model.load_weights(checkpoint_filepath)
-            y_pred_p = model.predict(xval)
-            histories.append(history)
-            plothistories([history],  regression)
-            plotauc(y_pred_p.T[0], yval.T[0])
-            # model.save(f'models/lstm_model_{tag}_{index}.h5', save_format='h5')
-        model.save('my_model.keras')
+                model.load_weights(checkpoint_filepath)
+                y_pred_p = model.predict(xval)
+                histories.append(history)
+                plothistories([history],  regression)
+                plotauc(y_pred_p.T[0], yval.T[0], 'val data')
+                # model.save(f'models/lstm_model_{tag}_{index}.h5', save_format='h5')
 
-        ind = 0
-        for history in histories:
-            np.save(f'histories_{tag}_{ind}', history.history['loss'], allow_pickle=True)
-            np.save(f'histories_{tag}_{ind}', history.history['val_loss'], allow_pickle=True)
-            ind += 1
+
+                ind = 0
+                for history in histories:
+                    np.save(f'histories_{tag}_{ind}', history.history['loss'], allow_pickle=True)
+                    np.save(f'histories_{tag}_{ind}', history.history['val_loss'], allow_pickle=True)
+                    ind += 1
+            model.save('my_model.keras')
     #   X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
     #   X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
