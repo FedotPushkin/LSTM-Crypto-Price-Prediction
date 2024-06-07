@@ -23,8 +23,8 @@ def predict_val(tag, params):
         # up, down = False, False
         # lstm = load_model(f'models/lstm_model_{tag}_{models}.h5')
 
-        x_val = np.empty(shape=(1, timesteps, 13))
-        val_sample = 1800
+        x_val = np.empty(shape=(1, timesteps, 9))
+        val_sample = validation_length
 
         length = validation_length - validation_lag - timesteps
         for v in range(length):

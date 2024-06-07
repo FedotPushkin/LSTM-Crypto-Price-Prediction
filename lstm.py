@@ -20,15 +20,15 @@ from predict import getpreds, predict_val
 
 if __name__ == '__main__':
     start = '01 Jan 2017'
-    end = '08 Apr 2024'
+    end = '05 June 2024'
     load_data = False
     reshuffle = False
-    train = True
-    predict = True
+    train = False
+    predict = False
+    calc_xval = False
     bench = True
     regression = False
-    calc_xval = False
-    validation_length = 40000
+    validation_length = 10000
     validation_lag = 60
     timesteps = 10
     params = [validation_length, validation_lag, timesteps, regression, calc_xval]
@@ -56,8 +56,8 @@ if __name__ == '__main__':
             # print(f'initial pos {cp.most_common(2)}')
             # print(f'initial neg {cn.most_common(2)}')
 
-        y_p = labels_p[31:1 - validation_length]
-        y_n = labels_n[31:1 - validation_length]
+        y_p = labels_p[validation_lag+timesteps+1:1 - validation_length]
+        y_n = labels_n[validation_lag+timesteps+1:1 - validation_length]
         # graph(X, start_g=31, hold_g=y, len_g=100, col_type=1)
         y_val_p = labels_p[-validation_length:]
         y_val_n = labels_n[-validation_length:]
@@ -68,17 +68,16 @@ if __name__ == '__main__':
         np.save('y_val_p', y_val_p, allow_pickle=True)
         np.save('y_val_n', y_val_n, allow_pickle=True)
         # np.save('val_labels', [0], allow_pickle=True)
-    X, y_p, y_n, y_val_p, y_val_n, candles = np.load('X.npy', allow_pickle=True), \
+    xp, y_p, y_n, y_val_p, y_val_n, candles = np.load('X.npy', allow_pickle=True), \
         np.load('y_p.npy', allow_pickle=True), \
         np.load('y_n.npy', allow_pickle=True), \
         np.load('y_val_p.npy', allow_pickle=True), \
         np.load('y_val_n.npy', allow_pickle=True), \
         np.load('candles.npy', allow_pickle=True)
-    xp = X
-    xn = X
-    xp, y_p = shape_data(xp, y_p, training=True, params=params)
+
     # xn, y_n = shape_data(xn, y_n, training=True)
     if train:
+        xp = shape_data(xp, training=True, params=params)
         #   ensure equal number of labels, shuffle, and split
         shuffle_and_train(xp, y_p, 'pos', regression=regression, reshuffle=reshuffle)
         # shuffle_and_train(xn, y_n, 'neg')
@@ -88,9 +87,10 @@ if __name__ == '__main__':
     if predict:
         # y_val_p = to_categorical(y_val_p, 2)
         # y_val_n = to_categorical(y_val_n, 2)
-        predict_val('pos', params)
+
+        predict_val(1, params)
     y_pred_p = np.array(getpreds('p'))
-    y_pred_n = np.array(getpreds('n'))
+    #y_pred_n = np.array(getpreds('n'))
 
     # grad_pred_p = makegrad(y_pred_p)
     # grad_pred_n = makegrad(y_pred_n)
@@ -113,7 +113,9 @@ if __name__ == '__main__':
     lag = labels_p.shape[0]-validation_length+validation_lag+timesteps
     balp = 0
     baln = 0
-    for i in range(10000):  # validation_length - validation_lag - 2 * timesteps-1):
+    preds_len = validation_length-validation_lag-timesteps-1
+
+    for i in range(preds_len):  # validation_length - validation_lag - 2 * timesteps-1):
 
         # if (y_pred_p[i] > 0.5 and savgol_deriv[i+validation_lag+timesteps]>0.5) \
         #        or (y_pred_p[i] < 0.5 and savgol_deriv[i +validation_lag+timesteps] < 0.5):
@@ -132,11 +134,11 @@ if __name__ == '__main__':
             else:
                 missn += 1
 
-    plotauc(y_pred_p[:10000], labels_p[lag:lag+10000])
+    plotauc(y_pred_p[:preds_len], labels_p[lag:lag+preds_len], 'check data')
     print(f'p {hitp / (hitp + missn)}')
     print(f'n {hitn / (hitn + missp)}')
     print(f'preds bal {baln/(balp+baln)} zeros')
-    cp = Counter(labels_p[lag:lag+10000])
+    cp = Counter(labels_p[lag:lag+preds_len])
     # cn = Counter(labels_n)
     zeros = cp.most_common(2)[0][1]
     ones = cp.most_common(2)[1][1]

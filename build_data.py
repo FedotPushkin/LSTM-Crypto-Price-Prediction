@@ -17,10 +17,11 @@ from sklearn.preprocessing import StandardScaler
 
 
 def build_tt_data(data, params):
+
     validation_length, validation_lag, timesteps = params[:3]
     x_tt = np.empty(shape=(timesteps, 13))
-
     length = data.shape[0]-validation_length-validation_lag - timesteps
+
     if length < validation_lag + timesteps:
         raise Exception("no tt data, maybe validation_length too big ")
     sum_time = 0
@@ -33,7 +34,7 @@ def build_tt_data(data, params):
         t1 = time.time()
         sum_time += t1-t0
         print(f'building train data {v} of {length-1}')
-        print(f'expected to last {sum_time*(length-v)/(60*(v+1)):.2f} minutes, avg lap: {sum_time/(v+1):.2f} sec')
+        print(f'expected to last {(sum_time*(length-v))/(60*(v+1)):.2f} minutes, avg lap: {sum_time/(v+1):.2f} sec')
     x_tt = np.delete(x_tt, [range(timesteps)], axis=0)
     return x_tt
 
@@ -210,6 +211,7 @@ def shape_data(x_s, training, params):
     for t in range(timesteps, x_s.shape[0]+1, timesteps):
         onestep = x_s[t - timesteps:t]
 
+        onestep = onestep[:, [0, 1, 3, 4, 5, 6, 8, 11, 12]]
         # onestep = scaler.fit_transform(onestep)
         # onestep = normalise(onestep)
         reshaped.append(onestep)
