@@ -4,23 +4,25 @@ import plotly.offline as py
 import plotly.graph_objs as go
 
 
-def graph(hold_g, start_g, col_type, len_g, lines, params):
+def min_g(a, b):
+    temp = list()
+    for mn in range(len(a)):
+        temp.append(min(a[mn], b[mn]))
+    return temp
+
+
+def max_g(a, b):
+    temp = list()
+    for mx in range(len(a)):
+        temp.append(min(a[mx], b[mx]))
+    return temp
+
+
+def graph(lines, start_g, col_type, lag,  params):
 
     candles = np.load('candles.npy', allow_pickle=True)
     validation_length, validation_lag, timesteps = params[:3]
-    lag = 800
-
-    def min_g(a, b):
-        temp = list()
-        for mn in range(len(a)):
-            temp.append(min(a[mn], b[mn]))
-        return temp
-
-    def max_g(a, b):
-        temp = list()
-        for mx in range(len(a)):
-            temp.append(min(a[mx], b[mx]))
-        return temp
+    len_g = 200
 
     # start_pred = candles.shape[0] - start_g
     preds_lag = validation_lag + timesteps
@@ -34,10 +36,9 @@ def graph(hold_g, start_g, col_type, len_g, lines, params):
     # te_g = x_g.T[0]
     # open_g = x_g.T[4]
     # close_g = x_g.T[5]
-    bias_x = 1
+
     zero = [0 for a in range(200)]
-    x_g = pd.DataFrame()
-    hold_g = pd.DataFrame(hold_g)
+
     # line_color = '#008000'
     trace0 = go.Candlestick(x=cand_g[cols[col_type][6]],
                             open=cand_g[cols[col_type][0]],
@@ -46,9 +47,10 @@ def graph(hold_g, start_g, col_type, len_g, lines, params):
                             close=cand_g[cols[col_type][1]],
                             name='candles')
 
-    trace1 = go.Scatter(x=cand_g[cols[col_type][6]], y=hold_g, name='holding', mode='lines', )
-    trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=lines[0][lag:], yaxis='y2',
-                        name='preds_p', mode='lines+markers', )
+    trace1 = go.Scatter(x=cand_g[cols[col_type][6]], y=lines[3][lag:], name='holding', mode='lines', yaxis='y3',
+                        line_color='red',)
+    #trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=lines[0][lag:], yaxis='y2',
+    #                    name='not_used', mode='lines+markers', )
     # trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=holding_m[lag:], yaxis='y3',
     #                     name='holding_n', mode='lines+markers', line_color='#f44336' )
     trace7 = go.Scatter(x=cand_g[cols[col_type][6]], y=lines[1][preds_lag+lag:],
@@ -75,7 +77,7 @@ def graph(hold_g, start_g, col_type, len_g, lines, params):
 
     # trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[3], name='psar_h', mode='lines', )
     # trace5 = go.Scatter(x=cand_g[cols[col_type][6]], y=x_g.T[4], name='psar_l', mode='lines', )
-    data = [trace0, trace1, trace3, trace8, trace10]
+    data = [trace0, trace1, trace8, trace10]
     y2 = go.YAxis(overlaying='y', side='right')
     y3 = go.YAxis(overlaying='y', side='right')
     y4 = go.YAxis(overlaying='y', side='right')
@@ -87,7 +89,7 @@ def graph(hold_g, start_g, col_type, len_g, lines, params):
         yaxis4=y4,
         yaxis5=y5
     )
-    graphs = [trace0, trace7, trace8, trace9, trace10]  # , trace8,,trace3]
+    graphs = [trace0, trace1, trace7, trace8, trace9, trace10]  # , trace8,,trace3]
     fig2 = go.Figure(data=graphs, layout=layout)
     # fig2 = make_subplots(rows=3, cols=1)
     # fig2.add_trace(trace0, row=1, col=1)
