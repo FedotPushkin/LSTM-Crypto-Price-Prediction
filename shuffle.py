@@ -163,7 +163,7 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
         #checkpoint_filepath = f'timeseries_bayes_opt_POC/trial_05/checkpoint'
         checkpoint_filepath = f'checkpoint.weights.h5'
         for lr in range(1, 2):
-            #opt_search(xtrain, ytrain, xval, yval)
+            opt_search(xtrain, ytrain, xval, yval)
 
             #model = load_model(f'best_opt_model.keras')
 
@@ -187,7 +187,7 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
             if os.path.isfile(checkpoint_filepath) and use_checkpoints:
                 model.load_weights(checkpoint_filepath)
                 print(f'loaded weights')
-            if 1:#with tf.device('/gpu:0'):
+            if 0:#with tf.device('/gpu:0'):
 
                 history = model.fit(xtrain, ytrain,
                                     epochs=300,

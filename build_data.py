@@ -52,20 +52,21 @@ def build_tt_piece(data, params):
     long = 26
     med = 12
     short = 9
+    zeros = np.zeros(len(lo))
     macd = Macd(cl, med, long, short).values
     ema = ema_indicator(cl, window=long, fillna=False)
     macd_n = macd/ema
     stoch_rsi = StochRsi(cl, period=long).hist_values
     x = list(range(cl.shape[0]))
-    grad_rsi = np.gradient(stoch_rsi, x)
+    #grad_rsi = np.gradient(stoch_rsi, x)
     dpo = Dpo(cl, period=short).values/sma_indicator(cl, window=short, fillna=False)
     cop = Coppock(cl, wma_pd=long, roc_long=med, roc_short=short).values
-    grad_cop = np.gradient(cop, x)
+    #grad_cop = np.gradient(cop, x)
     boll = BollingerBands(close=cl, window=long)
     boll_h = boll.bollinger_hband()/boll.bollinger_mavg()
-    grad_bolh = np.gradient(boll_h, x)
+    #grad_bolh = np.gradient(boll_h, x)
     boll_l = boll.bollinger_lband()/boll.bollinger_mavg()
-    grad_boll = np.gradient(boll_l, x)
+    #grad_boll = np.gradient(boll_l, x)
     psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
     sma = sma_indicator(vol, window=long, fillna=False)
     #obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume()/sma
@@ -87,7 +88,7 @@ def build_tt_piece(data, params):
     # truncate bad values and shift label
     xe = np.array([macd_n,
                    stoch_rsi,
-                   grad_rsi,
+                   zeros,#grad_rsi,
                    sar_d,
                    aru-ard,
                    #ema,
@@ -103,11 +104,11 @@ def build_tt_piece(data, params):
                    #cl,
                    #vol,
                    boll_h,
-                   grad_bolh,
+                   zeros, #grad_bolh,
                    boll_l,
-                   grad_boll,
-                   grad_cop,
-                   dpo,
+                   zeros,#grad_boll,
+                   zeros,#grad_cop,
+                   dpo,#
                    cop
                    ])
     #   high[30:],
@@ -126,21 +127,22 @@ def build_val_data(data, params):
     long = 26
     med = 12
     short = 9
+    zeros = np.zeros(len(lo))
     validation_lag = params[1]
     data = pd.DataFrame(cl).reset_index()[1]
     macd = Macd(data, med, long, short).values
     ema = ema_indicator(data, window=long, fillna=False)
     macd_n = np.array(macd)/np.array(ema)
     stoch_rsi = StochRsi(data, period=long).hist_values
-    grad_rsi = np.gradient(stoch_rsi, list(range(data.shape[0])))
+    #grad_rsi = np.gradient(stoch_rsi, list(range(data.shape[0])))
     dpo = Dpo(data, period=short).values / sma_indicator(data, window=short, fillna=False)
     cop = Coppock(data, wma_pd=long, roc_long=med, roc_short=short).values
-    grad_cop = np.gradient(cop, list(range(data.shape[0])))
+    #grad_cop = np.gradient(cop, list(range(data.shape[0])))
     boll = BollingerBands(close=data, window=long)
     boll_h = boll.bollinger_hband()/boll.bollinger_mavg()
-    grad_bolh = np.gradient(boll_h, list(range(data.shape[0])))
+    #grad_bolh = np.gradient(boll_h, list(range(data.shape[0])))
     boll_l = boll.bollinger_lband()/boll.bollinger_mavg()
-    grad_boll = np.gradient(boll_l, list(range(data.shape[0])))
+    #grad_boll = np.gradient(boll_l, list(range(data.shape[0])))
     psar = PSARIndicator(hi, lo, data, step=0.02, max_step=0.2, fillna=False)
     sar_d = psar.psar_down()
     sar_u = psar.psar_up()
@@ -163,7 +165,7 @@ def build_val_data(data, params):
         sar_d[ind] = (sar_d[ind] - data[ind])/data[ind]
     xv = np.array([macd_n,
                    stoch_rsi,
-                   grad_rsi,
+                   zeros,  #grad_rsi,
                    sar_d,
                    # sar_u,
                    aru - ard,
@@ -177,10 +179,10 @@ def build_val_data(data, params):
                    # cl,
                    # vol,
                    boll_h,
-                   grad_bolh,
+                   zeros,  #grad_bolh,
                    boll_l,
-                   grad_boll,
-                   grad_cop,
+                   zeros,  #grad_boll,
+                   zeros,  #grad_cop,
                    dpo,
                    cop
                    ])
