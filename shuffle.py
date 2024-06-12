@@ -1,4 +1,3 @@
-import pandas as pd
 from tensorflow.python.client import device_lib
 from build_model import build_model, opt_search
 import platform
@@ -10,17 +9,14 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from keras.utils import to_categorical
-from keras.models import load_model
-# from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import auc
 from sklearn.metrics import roc_curve
+# from sklearn.model_selection import StratifiedKFold
 
 
 def plothistories(histories, regression):
     for history in histories:
-        # summarize history for accuracy
-
-        # summarize history for loss
+        # summarize history for accuracy and loss
 
         plt.subplot(2, 1, 1)
         plt.plot(history.history['loss'])
@@ -49,7 +45,6 @@ def plothistories(histories, regression):
 def plotauc(y_pred_p, yval_p, mess):
 
     fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p, y_pred_p)
-
     auc_keras = auc(fpr_keras, tpr_keras)
 
     plt.figure(3)
@@ -63,12 +58,17 @@ def plotauc(y_pred_p, yval_p, mess):
     plt.show()
 
 
-def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
+def shuffle_and_train(x_adj, y_adj, tag, params):
     # count the number of each label
     # count_1 = np.count_nonzero(y_adj)
     # count_0 = y_adj.shape[0] - count_1
     # cut = min(count_0, count_1)
-    use_checkpoints = True
+    regression = params[4]
+    reshuffle = params[6]
+    use_checkpoints = params[7]
+    train_model = params[8]
+    features = params[3]
+    trials = 10
     # save some data for testing
     # train_idx = int(cut * split)
     if reshuffle:
@@ -155,18 +155,15 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
         ytrain, yval = np.load(f'ytrain_{tag}.npy', allow_pickle=True), \
             np.load(f'yval_{tag}.npy', allow_pickle=True)
 
-
         print(f'nans count {np.count_nonzero(np.isnan(xtrain))}')
-        model = build_model(xtrain, regression=regression, learning_rate=0.003, features=9)  # 0.009/(pow(2, lr)))
+        model = build_model(xtrain, regression=regression, learning_rate=0.003, features=features)
         if not regression:
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
-        #checkpoint_filepath = f'timeseries_bayes_opt_POC/trial_05/checkpoint'
+        # checkpoint_filepath = f'timeseries_bayes_opt_POC/trial_05/checkpoint'
         checkpoint_filepath = f'checkpoint.weights.h5'
         for lr in range(1, 2):
-            opt_search(xtrain, ytrain, xval, yval)
 
-            #model = load_model(f'best_opt_model.keras')
-
+            #opt_search(xtrain, ytrain, xval, yval, trials)
             if regression:
                 monitor = 'val_loss'
                 mode = 'min'
@@ -174,21 +171,20 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
                 monitor = 'val_loss'
                 mode = 'min'
             model_checkpoint_callback = ModelCheckpoint(
-
                 filepath=checkpoint_filepath,
                 save_weights_only=True,
                 monitor=monitor,
                 mode=mode,
                 save_best_only=True)
             early_stop = EarlyStopping(monitor='val_loss',
-                          patience=15,
-                          verbose=1,
-                          restore_best_weights=True)
+                                       patience=15,
+                                       verbose=1,
+                                       restore_best_weights=True)
             if os.path.isfile(checkpoint_filepath) and use_checkpoints:
                 model.load_weights(checkpoint_filepath)
                 print(f'loaded weights')
-            if 0:#with tf.device('/gpu:0'):
-
+            if train_model:
+                # with tf.device('/gpu:0'):
                 history = model.fit(xtrain, ytrain,
                                     epochs=300,
                                     batch_size=8192,
@@ -197,24 +193,21 @@ def shuffle_and_train(x_adj, y_adj, tag, reshuffle, regression=True):
                                     callbacks=[model_checkpoint_callback,
                                                early_stop,
                                                ReduceLROnPlateau(monitor='val_loss',
-                                                                  factor=0.5,
-                                                                  patience=5,
-                                                                  verbose=1,
-                                                                  min_delta=1e-5,
-                                                                  mode='min')])
+                                                                 factor=0.5,
+                                                                 patience=5,
+                                                                 verbose=1,
+                                                                 min_delta=1e-5,
+                                                                 mode='min')])
                 model.load_weights(checkpoint_filepath)
                 y_pred_p = model.predict(xval)
                 histories.append(history)
                 plothistories([history],  regression)
                 plotauc(y_pred_p.T[0], yval.T[0], 'val data')
-                # model.save(f'models/lstm_model_{tag}_{index}.h5', save_format='h5')
-
 
                 ind = 0
                 for history in histories:
                     np.save(f'histories_{tag}_{ind}', history.history['loss'], allow_pickle=True)
                     np.save(f'histories_{tag}_{ind}', history.history['val_loss'], allow_pickle=True)
                     ind += 1
-            model.save('my_model.keras')
-    #   X_train, y_train = X_train[shuffle_train], y_train[shuffle_train]
-    #   X_test, y_test = X_test[shuffle_test], y_test[shuffle_test]
+                model.save('my_model.keras')
+
