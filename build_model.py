@@ -1,44 +1,41 @@
 from tensorflow import keras
-from keras_tuner import HyperParameters, BayesianOptimization
-import keras.regularizers as reg
+from keras_tuner import BayesianOptimization
 from keras.callbacks import ModelCheckpoint
 from keras.regularizers import L2
 from keras.models import Sequential
-from keras.layers import LSTM, Dense, Dropout, BatchNormalization, Attention  # , AlphaDropout
+from keras.layers import LSTM, Dense, Dropout, BatchNormalization
 from keras.optimizers import Adam, Adamax, Adagrad, RMSprop
 
 
 def build_model(x_adj, regression, learning_rate, features):
 
-    reg = 'l2'
+    reg_type = 'l2'
     # first layer
     model = Sequential()
-    model.add(LSTM(120,
+    model.add(LSTM(100,
                    input_shape=(x_adj.shape[1], features),
                    return_sequences=True,
                    dropout=0,
-                   #recurrent_dropout=0.8,
-                   recurrent_regularizer=reg,
-                   kernel_regularizer=reg))   # recurrent_dropout=0.05))
+                   # recurrent_dropout=0.8,
+                   recurrent_regularizer=reg_type,
+                   kernel_regularizer=reg_type))
     model.add(BatchNormalization())
-    #model.add(Dropout(0.05))
 
     # second layer
-    model.add(LSTM(150, return_sequences=True,
-                   dropout=0.1,
-                   #recurrent_dropout=0.8,
-                   recurrent_regularizer=reg,
-                  kernel_regularizer=reg))# kernel_regularizer=reg.L1(0.001)))
+    model.add(LSTM(100, return_sequences=True,
+                   dropout=0.0,
+                   # recurrent_dropout=0.8,
+                   recurrent_regularizer=reg_type,
+                   kernel_regularizer=reg_type))
     model.add(BatchNormalization())
-    #model.add(Dropout(0.05))
-    model.add(LSTM(190, return_sequences=False,
-                   dropout=0.1,
-                   recurrent_regularizer=reg,
-                   kernel_regularizer=reg))  # , recurrent_regularizer='l2'))# , kernel_regularizer=reg.L1(0.005)))
+    model.add(LSTM(100, return_sequences=False,
+                   dropout=0.0,
+                   recurrent_regularizer=reg_type,
+                   kernel_regularizer=reg_type))
     model.add(BatchNormalization())
-    #model.add(Dropout(0.5))
+    # model.add(Dropout(0.5))
 
-    model.add(Dense(200, activation='relu', kernel_regularizer=reg))
+    model.add(Dense(50, activation='relu', kernel_regularizer=reg_type))
     model.add(BatchNormalization())
     # model.add(AlphaDropout(0.5))
     model.add(Dropout(0.1))
@@ -46,7 +43,6 @@ def build_model(x_adj, regression, learning_rate, features):
     # model.add(Dense(1, activation='linear'))    # kernel_regularizer=regularizers.L1(0.01)
 
     optimizer = keras.optimizers.RMSprop(learning_rate=learning_rate)
-
 
     if regression:
         model.add(Dense(1, activation='linear'))
@@ -65,41 +61,44 @@ def build_model(x_adj, regression, learning_rate, features):
 def build_model_bayesian(hp):
     model = Sequential()
     activation = 'tanh'
-    reg = 'l2'
-    model.add(keras.layers.LSTM(units=hp.Int('units1', min_value=80, max_value=120, step=10),
-                                #dropout=0,
-                                dropout=hp.Float('droput1', min_value=0.00, max_value=0.2, step=0.05),
-                                #recurrent_dropout=hp.Float('redropout', min_value=0.8, max_value=0.8, step=0.1),
+    reg_type = 'l2'
+    features = 14
+    timesteps = 15
+    model.add(keras.layers.LSTM(units=hp.Int('units1', min_value=100, max_value=120, step=10),
+                                # dropout=0,
+                                # dropout=hp.Float('droput1', min_value=0.00, max_value=0.1, step=0.05),
+                                # recurrent_dropout=hp.Float('redropout', min_value=0.8, max_value=0.8, step=0.1),
                                 activation=activation,
-                                recurrent_regularizer=reg,
-                                kernel_regularizer=reg,
+                                recurrent_regularizer=reg_type,
+                                kernel_regularizer=reg_type,
                                 return_sequences=True,
-                                input_shape=(10, 13)))
-    #Attention()
+                                input_shape=(timesteps, features)))
+    # Attention()
     model.add(BatchNormalization())
-    model.add(keras.layers.LSTM(units=hp.Int('units2', min_value=150, max_value=190, step=10),
-                                #dropout=0,
-                                recurrent_regularizer=reg,
-                                #recurrent_dropout=hp.Float('redropout', min_value=0.00, max_value=0.9, step=0.1),
-                                kernel_regularizer=reg,
-                                dropout=hp.Float('dropout2', min_value=0.00, max_value=0.2, step=0.05),
-                                #return_sequences=True,
+    model.add(keras.layers.LSTM(units=hp.Int('units2', min_value=100, max_value=140, step=10),
+                                # dropout=0,
+                                recurrent_regularizer=reg_type,
+                                # recurrent_dropout=hp.Float('redropout', min_value=0.00, max_value=0.9, step=0.1),
+                                kernel_regularizer=reg_type,
+                                # dropout=hp.Float('dropout2', min_value=0.00, max_value=0.1, step=0.05),
+                                # return_sequences=True,
+                                return_sequences=True,
                                 activation=activation,
                                 ))
-    #Attention()
-    #model.add(BatchNormalization())
-    #model.add(keras.layers.LSTM(units=hp.Int('units3', min_value=40, max_value=160, step=10),
-    #                            recurrent_regularizer=reg,
-    #                            kernel_regularizer=reg,
-    #                            activation=activation))
-    #Attention()
+    # Attention()
     model.add(BatchNormalization())
-    model.add(Dense(units=hp.Int('units4_dense', min_value=120, max_value=200, step=10),
+    model.add(keras.layers.LSTM(units=hp.Int('units3', min_value=100, max_value=200, step=10),
+                                recurrent_regularizer=reg_type,
+                                kernel_regularizer=reg_type,
+                                activation=activation))
+    # Attention()
+    model.add(BatchNormalization())
+    model.add(Dense(units=hp.Int('units4_dense', min_value=70, max_value=150, step=10),
                     activation='relu',
                     kernel_regularizer=L2(hp.Choice('L2_1', [1e-4, 1e-3, 1e-2]))))
 
     model.add(BatchNormalization())
-    model.add(Dropout(hp.Float('dropout', min_value=0.00, max_value=0.25, step=0.05)))
+    model.add(Dropout(hp.Float('dropout', min_value=0.00, max_value=0.1, step=0.05)))
     model.add(Dense(2, activation='sigmoid'))
 
     optimizer_choice = hp.Choice('optimizer', ['rms'])
@@ -113,8 +112,8 @@ def build_model_bayesian(hp):
     return model
 
 
-def opt_search(x_adj, y_adj, xval, yval):
-    checkpoint_filepath = f'timeseries_bayes_opt_POC/trial_00/checkpoint'
+def opt_search(x_adj, y_adj, xval, yval, trials):
+    checkpoint_filepath = f'opt_search_checkpoint'
     monitor = 'val_loss'
     mode = 'min'
     model_checkpoint_callback = ModelCheckpoint(
@@ -124,12 +123,11 @@ def opt_search(x_adj, y_adj, xval, yval):
         monitor=monitor,
         mode=mode,
         save_best_only=True)
-    hp = HyperParameters()
-    trials = 20
+
     bayesian_opt_tuner = BayesianOptimization(
         build_model_bayesian,
         objective='val_loss',
-        max_trials=trials+5,
+        max_trials=trials+1,
         num_initial_points=3,
         executions_per_trial=1,
         project_name='timeseries_bayes_opt_POC',
@@ -143,9 +141,9 @@ def opt_search(x_adj, y_adj, xval, yval):
                               steps_per_epoch=30,
                               callbacks=[model_checkpoint_callback,
                                          keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                                       patience=12,
+                                                                       patience=10,
                                                                        verbose=1,
-                                                                       #start_from_epoch=3,
+                                                                       # start_from_epoch=3,
                                                                        restore_best_weights=True
                                                                        ),
                                          keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
