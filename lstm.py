@@ -8,11 +8,10 @@ from build_data import build_tt_data, shape_data
 from shuffle import shuffle_and_train, plotauc
 from xgboost import XGBClassifier  # XGBRegressor
 
-from get_data import get_data_files
 from graph import graph
 from strategy_benchmark import strategy_bench, random_guess
 from predict import getpreds, predict_val
-
+from get_data import get_data_files
 # sys.path.append(os.path.join('C:/', 'Users', 'Fedot', 'Downloads', 'LSTM-Crypto-Price-Prediction', 'historical_data'))
 # sys.path.append(os.path.join('historical_data'))
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
@@ -21,20 +20,24 @@ from predict import getpreds, predict_val
 if __name__ == '__main__':
     start = '01 Jan 2017'
     end = '07 June 2024'
-    load_data = False
-    reshuffle = False
+    load_data = True
+    reshuffle = True
     train = True
     predict = True
-    calc_xval = False
+    calc_xval = True
     bench = True
     regression = False
+    use_checkpoints = False
+    train_model = True
     validation_length = 20000
-    validation_lag = 60
+    validation_lag = 35
     timesteps = 10
-    params = [validation_length, validation_lag, timesteps, regression, calc_xval]
+    labels_wnd = 19
+    features = 9
+    params = [validation_length, validation_lag, timesteps, features, regression, calc_xval, reshuffle, use_checkpoints, train_model]
     if load_data:
-        candles = get_data_files(start, end, 15)
-        np.save('candles', candles, allow_pickle=True)
+        #candles = get_data_files(start, end, 15)
+        #np.save('candles', candles, allow_pickle=True)
         cl = np.load("hist_cl.npy")
         op = np.load("hist_op.npy")
         lo = np.load("hist_lo.npy")
@@ -45,9 +48,8 @@ if __name__ == '__main__':
 
         candles = pd.DataFrame({'open': op, 'close': cl, 'high': hi, 'low': lo, 'mean': res, 'vol': vol, 'Date': date})
 
-
         X = build_tt_data(candles, params)
-        labels_p, labels_n = Genlabels(candles['close'], window=25, polyorder=3).labels
+        labels_p, labels_n = Genlabels(candles['close'], window=labels_wnd, polyorder=3).labels
         if regression:
             cp = Counter(num > 0 for num in labels_p)
 
@@ -60,31 +62,27 @@ if __name__ == '__main__':
 
         y_p = labels_p[validation_lag+timesteps:- validation_length]
         y_n = labels_n[validation_lag+timesteps:- validation_length]
-        # graph(X, start_g=31, hold_g=y, len_g=100, col_type=1)
-        y_val_p = labels_p[-validation_length:]
-        y_val_n = labels_n[-validation_length:]
 
         np.save('X', X, allow_pickle=True)
         np.save('y_p', y_p, allow_pickle=True)
         np.save('y_n', y_n, allow_pickle=True)
-        np.save('y_val_p', y_val_p, allow_pickle=True)
-        np.save('y_val_n', y_val_n, allow_pickle=True)
+        # np.save('y_val_p', y_val_p, allow_pickle=True)
+        # np.save('y_val_n', y_val_n, allow_pickle=True)
         # np.save('val_labels', [0], allow_pickle=True)
-    xp, y_p, y_n, y_val_p, y_val_n, candles = np.load('X.npy', allow_pickle=True), \
+    xp, y_p, y_n, candles = np.load('X.npy', allow_pickle=True), \
         np.load('y_p.npy', allow_pickle=True), \
         np.load('y_n.npy', allow_pickle=True), \
-        np.load('y_val_p.npy', allow_pickle=True), \
-        np.load('y_val_n.npy', allow_pickle=True), \
         np.load('candles.npy', allow_pickle=True)
+
     # cl = np.load("hist_cl.npy")
-    #labels_p, labels_n = Genlabels(cl, window=25, polyorder=3).labels
+    # labels_p, labels_n = Genlabels(cl, window=25, polyorder=3).labels
     # y_p = labels_p[validation_lag + timesteps:- validation_length]
-    #y_n = labels_n[validation_lag + timesteps:- validation_length]
+    # y_n = labels_n[validation_lag + timesteps:- validation_length]
     # xn, y_n = shape_data(xn, y_n, training=True)
     if train:
         xp = shape_data(xp, training=True, params=params)
         #   ensure equal number of labels, shuffle, and split
-        shuffle_and_train(xp, y_p, 'pos', regression=regression, reshuffle=reshuffle)
+        shuffle_and_train(xp, y_p, 'pos', params)
         # shuffle_and_train(xn, y_n, 'neg')
 
     #   print(model.summary())
@@ -95,7 +93,7 @@ if __name__ == '__main__':
 
         predict_val(1, params)
     y_pred_p = np.array(getpreds('p'))
-    #y_pred_n = np.array(getpreds('n'))
+    # y_pred_n = np.array(getpreds('n'))
 
     # grad_pred_p = makegrad(y_pred_p)
     # grad_pred_n = makegrad(y_pred_n)
@@ -108,13 +106,13 @@ if __name__ == '__main__':
     # grad_pred_n = np.insert(grad_pred_n, 0, None, axis=0)
     hitp = 0
     missp = 0
-    hitn=0
-    missn=0
+    hitn = 0
+    missn = 0
 
     candles_val = candles[-validation_length:-timesteps]
-    savgol = Genlabels(candles_val[1], window=25, polyorder=3).apply_filter(deriv=0, hist=candles_val[1])
-    savgol_deriv = Genlabels(candles_val[1], window=25, polyorder=3).apply_filter(deriv=1, hist=candles_val[1])
-    labels_p, labels_n = Genlabels(candles[1], window=25, polyorder=3).labels
+    savgol = Genlabels(candles_val[1], window=labels_wnd, polyorder=3).apply_filter(deriv=0, hist=candles_val[1])
+    savgol_deriv = Genlabels(candles_val[1], window=labels_wnd, polyorder=3).apply_filter(deriv=1, hist=candles_val[1])
+    labels_p, labels_n = Genlabels(candles[1], window=labels_wnd, polyorder=3).labels
     lag = labels_p.shape[0]-validation_length+validation_lag+timesteps
     balp = 0
     baln = 0
@@ -125,14 +123,13 @@ if __name__ == '__main__':
         # if (y_pred_p[i] > 0.5 and savgol_deriv[i+validation_lag+timesteps]>0.5) \
         #        or (y_pred_p[i] < 0.5 and savgol_deriv[i +validation_lag+timesteps] < 0.5):
         delta = 0.02
-
-        if (y_pred_p[i] < 0.5-delta):
-                baln += 1
-                if labels_p[i+lag] == 0:
-                    hitn += 1
-                else:
-                    missp += 1
-        elif (y_pred_p[i] > 0.5+delta):
+        if y_pred_p[i] < 0.5-delta:
+            baln += 1
+            if labels_p[i+lag] == 0:
+                hitn += 1
+            else:
+                missp += 1
+        elif y_pred_p[i] > 0.5+delta:
             balp += 1
             if labels_p[i+lag] == 1:
                 hitp += 1
@@ -218,18 +215,18 @@ if __name__ == '__main__':
         # start = candles.shape[0] - validation_length
 
         # random_guess(y_pred)
-        #random_guess(labels_p[lag:].size, start+validation_lag+timesteps, labels_p[lag:])
+        # random_guess(labels_p[lag:].size, start+validation_lag+timesteps, labels_p[lag:])
         best = -10000000
         hold_best = []
         best_params = [0, 0]
-        for i in range(7, 8):
-            for j in range(7, 8):
+        for i in range(3, 5):
+            for j in range(3, 5):
                 result, __, holding_m = strategy_bench(preds=y_pred_p,
-                                                       #preds=labels_p[lag:],
+                                                       # preds=labels_p[lag:],
                                                        start_pos=start+validation_lag+timesteps,
                                                        verb=False,
-                                                       deltab=i*0.06,
-                                                       deltas=j*0.06)
+                                                       deltab=0.2+0.05*i,
+                                                       deltas=0.2+0.05*j)
                 if result > best:
                     best = result
                     hold_best = holding_m
@@ -246,7 +243,7 @@ if __name__ == '__main__':
 
     # bench_cand(y_pred_p)
     # bench_cand(y_pred_n)
-    lines = [savgol, savgol_deriv, y_pred_p, hold_best]
+    lines = [savgol, savgol_deriv, y_pred_p, labels_p[lag:]]
     graph(lines=lines, start_g=start, lag=0, col_type=0, params=params)
-    #graph(lines=lines, start_g=start, lag=200, col_type=0, params=params)
-    #graph(lines=lines, start_g=start, lag=400, col_type=0, params=params)
+    graph(lines=lines, start_g=start, lag=200, col_type=0, params=params)
+    # graph(lines=lines, start_g=start, lag=400, col_type=0, params=params)
