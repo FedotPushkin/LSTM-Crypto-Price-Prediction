@@ -3,19 +3,17 @@ import pandas as pd
 import time
 from keras.models import load_model
 from build_data import build_val_data, shape_data
-# import matplotlib.pyplot as plt
 
 
 def predict_val(tag, params):
-    validation_length, validation_lag, timesteps, regression, calc_xval = params
+    validation_length, validation_lag, timesteps, features, regression, calc_xval = params[:6]
     candles = pd.DataFrame(np.load('candles.npy', allow_pickle=True))
-    #lstm = load_model(f'best_opt_model_{tag}.keras')
-    lstm = load_model(f'my_model.keras')
-    #model.load_weights(f'timeseries_bayes_opt_POC/trial_00/checkpoint')
-    y_strat_p = list()
-    y_strat_n = list()
+    lstm = load_model(f'best_opt_model_4.keras')
+    # print(lstm.summary())
+    # model.load_weights(f'timeseries_bayes_opt_POC/trial_00/checkpoint')
     runs = 0
     t_sum = 0
+    change_features_n = False
     if calc_xval:
 
         # y_strat_n.append([])
@@ -23,7 +21,7 @@ def predict_val(tag, params):
         # up, down = False, False
         # lstm = load_model(f'models/lstm_model_{tag}_{models}.h5')
 
-        x_val = np.empty(shape=(1, timesteps, 9))
+        x_val = np.empty(shape=(1, timesteps, features))
         val_sample = validation_length
 
         length = validation_length - validation_lag - timesteps
@@ -33,7 +31,6 @@ def predict_val(tag, params):
             t0 = time.time()
             val_input = candles.iloc[-validation_length + v:-validation_length + v + validation_lag + timesteps]
             x_val_single = build_val_data(data=val_input, params=params)
-            # graph(X, start_g=31, hold_g=y, len_g=50, col_type=0)
             x_val_single = shape_data(x_val_single, training=False, params=params)
             x_val = np.append(x_val, x_val_single, axis=0)
             t1 = time.time()
@@ -45,6 +42,17 @@ def predict_val(tag, params):
         np.save('x_val', x_val, allow_pickle=True)
     else:
         x_val = np.load("x_val.npy", allow_pickle=True)
+        if change_features_n:
+            x_val_n = np.empty(shape=(1, timesteps, features))
+            for ind, x in enumerate(x_val):
+                feat_nums = [range(14)]
+                drop_features = [2, 5, 8, 10, 11]
+                cut_timesteps = 5
+                onestep = np.array([x[:, np.setdiff1d(feat_nums, drop_features)][:-cut_timesteps]])
+                x_val_n = np.append(x_val_n, onestep, axis=0)
+                print(f'cutting xval, {ind} of {x_val.shape[0]}')
+            x_val_n = np.delete(x_val_n, 0, axis=0)
+            x_val = x_val_n
     t3 = time.time()
     lstm_pred = lstm.predict(x_val, batch_size=4096)
     t4 = time.time()
@@ -53,7 +61,6 @@ def predict_val(tag, params):
         y_strat_p = lstm_pred[0]
     else:
         y_strat_p = lstm_pred.T[1]
-
 
     # close = candles.iloc[-validation_length + v + timesteps][1]
     # open = candles.iloc[-validation_length + v + timesteps][0]
@@ -67,10 +74,9 @@ def predict_val(tag, params):
 
     print(f' build {t_sum/60:.2f} sec, predict {pred_time:.2f} sec')
     y_strat_p = pd.DataFrame(y_strat_p)
-    y_strat_n = pd.DataFrame(y_strat_n)
+    # y_strat_n = pd.DataFrame(y_strat_n)
     np.save(f'y_strat_{tag}_p', y_strat_p, allow_pickle=True)
-    np.save(f'y_strat_{tag}_n', y_strat_n, allow_pickle=True)
-
+    # np.save(f'y_strat_{tag}_n', y_strat_n, allow_pickle=True)
 
 
 def getpreds(tag):
