@@ -2,10 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objs as go
+# import plotly.graph_objs as go
 import copy
 
-def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_lag=30, timesteps=15):
+
+def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0):
 
     start_balance = 1000
     start_short_balance = 1000
@@ -14,8 +15,6 @@ def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_
     leftover = 0
     short_leftover = 0
     profit_short = []
-    long_value = 0
-    short_value = 0
     amount = 0
     amount_short = 0
     trades = 0
@@ -33,10 +32,8 @@ def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_
             raise Exception('some prediction is none')
         if balance > 0 and amount == 0 and position == 0 and preds[i-start_pos] > 0.5+deltab:
             #   #open long#
-            #   money spent on long pos
-            long_value = start_balance
             #   amount available after opening long position
-            amount = start_balance*(1-fee)/candles.iloc[i][0]
+            amount = start_balance/(candles.iloc[i][0]*(1+fee))
             balance = 0
             position = 1
             holding.append(1)
@@ -46,7 +43,7 @@ def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_
         else:
             # #close long#
             if amount > 0 and position == 1 and balance == 0 and (preds[i-start_pos] < 0.5-deltas):
-                
+
                 profit_long.append(((1-fee)*amount*candles.iloc[i][0]-start_balance)/start_balance)
                 leftover += (1-fee)*amount*candles.iloc[i][0]-start_balance
                 trades += 1
@@ -63,9 +60,7 @@ def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_
                 if position == 0 and amount == 0 and amount_short == 0 and preds[i-start_pos] < 0.5-deltas:
                     position = -1
                     # how much was sold
-                    amount_short = start_short_balance*(1 - fee)/candles.iloc[i][0]
-                    # how much we got for selling
-                    #short_value = amount_short * candles.iloc[i][0]
+                    amount_short = start_short_balance/(candles.iloc[i][0]*(1 - fee))
                     holding.append(-1)
                     if verb:
                         print('short at ' + str(candles.iloc[i][6]) + ' for ' + str(candles.iloc[i][0]))
@@ -77,7 +72,6 @@ def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_
                         short_leftover += curr_profit
                         profit_short.append(curr_profit/start_short_balance)
                         amount_short = 0
-                        # short_balance=start_short_balance
                         holding.append(0)
                         trades_short += 1
                         if verb:
@@ -88,7 +82,7 @@ def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_
         #   self.savgol_deriv = self.apply_filter(deriv=1, hist=candles.iloc[:i + 3]['mean'])
     if 1:
         print('balance ', balance, ' amount ', amount, ' trades ', trades,
-              ' amount short ', amount_short, ' trades_short ', trades_short,' deltab', deltab, ' deltas', deltas)
+              ' amount short ', amount_short, ' trades_short ', trades_short, ' deltab', deltab, ' deltas', deltas)
     result = ((balance+leftover+amount*(1-fee)*candles[1][candles.shape[0]-1])/start_balance)-1
     if amount_short > 0:
         short_leftover += start_short_balance - amount_short * (1+fee)*candles[1][candles.shape[0]-1]
@@ -111,10 +105,11 @@ def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_
     #   print('result_long %.2f avg  long %.2f result_short %.2f avg  short %.2f'%
     #   (result,statistics.mean(profit_long),result_short,statistics.mean(profit_short)))
     trace1 = px.histogram(profit_long, nbins=400, title='longs')
-    #print(profit_long)
+
     trace2 = px.histogram(profit_short, nbins=400, title='shorts')
-    #trace3 = px.histogram(diffs, nbins=50, title='diffs')
-   # fig = go.Figure(data=[trace1, trace2])
+    print(f' avg profit long {np.mean(profit_long)}')
+    print(f' avg profit short {np.mean(profit_short)}')
+    # trace3 = px.histogram(diffs, nbins=50, title='diffs')
     prof = 0
     for p in profit_long:
         if p > 0:
@@ -128,8 +123,8 @@ def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0, validation_
     if len(profit_short) > 0:
         pass
         #  print('winrate short ' + str(prof / len(profit_short)))
-    trace1.show()
-    trace2.show()
+    # trace1.show()
+    # trace2.show()
     # trace3.show()
 
     def sign(a):
@@ -168,6 +163,7 @@ def spoil_labels(labels, rate):
         if r < rate:
             spoiled[i] = (labels[i]+1) % 2
     return spoiled
+
 
 def bench_cand(pred, timesteps):
     candles = np.load('candles.npy', allow_pickle=True)
