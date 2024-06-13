@@ -3,12 +3,12 @@ import pandas as pd
 import time
 from keras.models import load_model
 from build_data import build_val_data, shape_data
-
+import joblib
 
 def predict_val(tag, params):
     validation_length, validation_lag, timesteps, features, regression, calc_xval = params[:6]
     candles = pd.DataFrame(np.load('candles.npy', allow_pickle=True))
-    lstm = load_model(f'best_opt_model_4.keras')
+    lstm = load_model(f'my_model.keras')
     # print(lstm.summary())
     # model.load_weights(f'timeseries_bayes_opt_POC/trial_00/checkpoint')
     runs = 0
@@ -23,29 +23,36 @@ def predict_val(tag, params):
 
         x_val = np.empty(shape=(1, timesteps, features))
         val_sample = validation_length
-
+        x_v_temp = list()
         length = validation_length - validation_lag - timesteps
+        scaler = joblib.load('models/scaler.dump')
         for v in range(length):
             if v > val_sample:
                 continue
             t0 = time.time()
             val_input = candles.iloc[-validation_length + v:-validation_length + v + validation_lag + timesteps]
             x_val_single = build_val_data(data=val_input, params=params)
-            x_val_single = shape_data(x_val_single, training=False, params=params)
+            x_val_single = shape_data(x_val_single, training=False, timesteps=timesteps, scaler=scaler)
+            #x_v_temp.append(x_val_single[0])
             x_val = np.append(x_val, x_val_single, axis=0)
             t1 = time.time()
             runs += 1
-            t_sum += t1-t0
-            print(f'adding val data {v} of {val_sample}, eta {t_sum*(val_sample-v)/(60*(v+1)):.2f} min')
+            curr_lap = t1-t0
+            t_sum += curr_lap
+            avg_lap = t_sum/(v+1)
+            print(f'adding val data {v} of {val_sample}, eta {curr_lap*(val_sample-v)/60:.2f} min, '
+                  f'avg lap: {avg_lap * 100:.2f} ms, curr lap {curr_lap * 100:.2f} ms')
+
 
         x_val = np.delete(x_val, 0, axis=0)
+        #x_val = np.array(x_v_temp)
         np.save('x_val', x_val, allow_pickle=True)
     else:
         x_val = np.load("x_val.npy", allow_pickle=True)
         if change_features_n:
             x_val_n = np.empty(shape=(1, timesteps, features))
             for ind, x in enumerate(x_val):
-                feat_nums = [range(14)]
+                feat_nums = [range(19)]
                 drop_features = [2, 5, 8, 10, 11]
                 cut_timesteps = 5
                 onestep = np.array([x[:, np.setdiff1d(feat_nums, drop_features)][:-cut_timesteps]])
