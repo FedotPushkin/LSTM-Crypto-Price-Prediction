@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 # import plotly.graph_objs as go
 import copy
-
+import math
 
 def strategy_bench(preds, start_pos, verb=False, deltab=0, deltas=0):
 
@@ -164,6 +164,19 @@ def spoil_labels(labels, rate):
             spoiled[i] = (labels[i]+1) % 2
     return spoiled
 
+
+def improve_labels(labels, true_labels, rate):
+    improved_l = copy.deepcopy(labels)
+    improve_count = math.ceil(rate*labels.size/100)
+    i = 0
+    points = set()
+    while i < improve_count:
+        point = np.random.random_integers(low=0, high=labels.size-1)
+        if abs(labels[point]-true_labels[point]) > 0.5 and point not in points:
+            improved_l[point] = true_labels[point]
+            points.add(point)
+            i += 1
+    return improved_l
 
 def bench_cand(pred, timesteps):
     candles = np.load('candles.npy', allow_pickle=True)
