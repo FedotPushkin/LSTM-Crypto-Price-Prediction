@@ -3,6 +3,7 @@ from build_model import build_model, opt_search
 import platform
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 import os
 from collections import Counter
 from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
@@ -68,7 +69,8 @@ def shuffle_and_train(x_adj, y_adj, tag, params):
     use_checkpoints = params[7]
     train_model = params[8]
     features = params[3]
-    trials = 10
+    restore_hist = False
+    trials = 14
     # save some data for testing
     # train_idx = int(cut * split)
     if reshuffle:
@@ -201,13 +203,11 @@ def shuffle_and_train(x_adj, y_adj, tag, params):
                 model.load_weights(checkpoint_filepath)
                 y_pred_p = model.predict(xval)
                 histories.append(history)
-                plothistories([history],  regression)
-                plotauc(y_pred_p.T[0], yval.T[0], 'val data')
+                history.to_pickle("./train_history.pkl")
 
-                ind = 0
-                for history in histories:
-                    np.save(f'histories_{tag}_{ind}', history.history['loss'], allow_pickle=True)
-                    np.save(f'histories_{tag}_{ind}', history.history['val_loss'], allow_pickle=True)
-                    ind += 1
+                if restore_hist:
+                    history = pd.read_pickle("./train_history.pkl")
+                plothistories([history], regression)
+                plotauc(y_pred_p.T[0], yval.T[0], 'val data')
                 model.save('my_model.keras')
 
