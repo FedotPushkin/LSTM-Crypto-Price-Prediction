@@ -9,7 +9,7 @@ from shuffle import shuffle_and_train, plotauc
 from xgboost import XGBClassifier  # XGBRegressor
 
 from graph import graph
-from strategy_benchmark import strategy_bench, random_guess
+from strategy_benchmark import strategy_bench, random_guess, improve_labels
 from predict import getpreds, predict_val
 from get_data import get_data_files
 # sys.path.append(os.path.join('C:/', 'Users', 'Fedot', 'Downloads', 'LSTM-Crypto-Price-Prediction', 'historical_data'))
@@ -20,20 +20,20 @@ from get_data import get_data_files
 if __name__ == '__main__':
     start = '01 Jan 2017'
     end = '07 June 2024'
-    load_data = True
+    load_data = False
     reshuffle = True
-    train = True
+    train = False
+    train_model = True
+    use_checkpoints = False
     predict = True
     calc_xval = True
     bench = True
     regression = False
-    use_checkpoints = False
-    train_model = True
     validation_length = 20000
     validation_lag = 35
-    timesteps = 10
-    labels_wnd = 19
-    features = 9
+    timesteps = 23
+    labels_wnd = 25
+    features = 15
     params = [validation_length, validation_lag, timesteps, features, regression, calc_xval, reshuffle, use_checkpoints, train_model]
     if load_data:
         #candles = get_data_files(start, end, 15)
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     # y_n = labels_n[validation_lag + timesteps:- validation_length]
     # xn, y_n = shape_data(xn, y_n, training=True)
     if train:
-        xp = shape_data(xp, training=True, params=params)
+        xp = shape_data(xp, training=True, timesteps=timesteps)
         #   ensure equal number of labels, shuffle, and split
         shuffle_and_train(xp, y_p, 'pos', params)
         # shuffle_and_train(xn, y_n, 'neg')
@@ -219,9 +219,11 @@ if __name__ == '__main__':
         best = -10000000
         hold_best = []
         best_params = [0, 0]
-        for i in range(3, 5):
-            for j in range(3, 5):
-                result, __, holding_m = strategy_bench(preds=y_pred_p,
+        y_improved = improve_labels(y_pred_p, labels_p[lag:], 5)
+        for i in range(1, 5):
+            for j in range(1, 5):
+                y_improved = improve_labels(y_pred_p, labels_p[lag:], 3)
+                result, __, holding_m = strategy_bench(preds=y_improved,
                                                        # preds=labels_p[lag:],
                                                        start_pos=start+validation_lag+timesteps,
                                                        verb=False,
