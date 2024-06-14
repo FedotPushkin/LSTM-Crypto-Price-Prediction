@@ -32,7 +32,7 @@ def graph(lines, start_g, col_type, lag,  params):
     # for i in range(timesteps):
     #  pr.append(None)
     cols = [[0, 1, 2, 3, 4, 5, 6, 7], ['open', 'close', 'high', 'low', 'mean', 'vol', 'Date']]
-    zero = [0 in range(200)]
+    zero = [0 for a in range(200)]
     # te_g = x_g.T[0]
     # open_g = x_g.T[4]
     # close_g = x_g.T[5]
@@ -44,8 +44,10 @@ def graph(lines, start_g, col_type, lag,  params):
                             close=cand_g[cols[col_type][1]],
                             name='candles')
 
-    trace1 = go.Scatter(x=cand_g[cols[col_type][6]], y=lines[3][lag:], name='holding', mode='lines', yaxis='y3',
+    trace1 = go.Scatter(x=cand_g[cols[col_type][6]], y=lines[3][lag:], name='label', mode='lines', yaxis='y3',
                         line_color='red',)
+    trace2 = go.Scatter(x=cand_g[cols[col_type][6]], y=lines[4][lag:], name='holding', mode='lines', yaxis='y3',
+                        line_color='purple', )
     # trace3 = go.Scatter(x=cand_g[cols[col_type][6]], y=lines[0][lag:], yaxis='y2',
     #                    name='not_used', mode='lines+markers', )
     # trace4 = go.Scatter(x=cand_g[cols[col_type][6]], y=holding_m[lag:], yaxis='y3',
@@ -79,7 +81,7 @@ def graph(lines, start_g, col_type, lag,  params):
         yaxis4=y4,
         yaxis5=y5
     )
-    graphs = [trace0, trace1,  trace8,  trace10]  # , trace8,,trace3]
+    graphs = [trace0, trace1,  trace2, trace8,  trace10]  # , trace8,,trace3]
     fig2 = go.Figure(data=graphs, layout=layout)
     # fig2 = make_subplots(rows=3, cols=1)
     # fig2.add_trace(trace0, row=1, col=1)
