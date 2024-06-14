@@ -4,10 +4,12 @@ from collections import Counter
 # from verstack.stratified_continuous_split import scsplit
 # cross_val_score
 from generate_labels import Genlabels
+import matplotlib.pyplot as plt
 from build_data import build_tt_data, shape_data
 from shuffle import shuffle_and_train, plotauc
 from xgboost import XGBClassifier  # XGBRegressor
-
+import math
+from ta.trend import sma_indicator
 from graph import graph
 from strategy_benchmark import strategy_bench, random_guess, improve_labels
 from predict import getpreds, predict_val
@@ -20,32 +22,47 @@ from get_data import get_data_files
 if __name__ == '__main__':
     start = '01 Jan 2017'
     end = '07 June 2024'
-    load_data = False
+    load_data = True
     reshuffle = True
-    train = False
-    train_model = True
+    train = True
+    train_model = False
     use_checkpoints = False
     predict = True
     calc_xval = True
     bench = True
     regression = False
     validation_length = 20000
-    validation_lag = 35
-    timesteps = 23
+    validation_lag = 28
+    timesteps = 15
     labels_wnd = 25
-    features = 15
-    params = [validation_length, validation_lag, timesteps, features, regression, calc_xval, reshuffle, use_checkpoints, train_model]
+    features = 21
+    long, med, short = 26, 12, 9
+    hl, ll, sl, ss = math.ceil(long / 2), math.ceil(long * 1.27), math.ceil(long * 0.77), math.ceil(short / 2)
+    params = [validation_length, validation_lag, timesteps, features, regression, calc_xval, reshuffle, use_checkpoints, train_model, long, med, short, hl, ll, sl, ss]
     if load_data:
         #candles = get_data_files(start, end, 15)
         #np.save('candles', candles, allow_pickle=True)
-        cl = np.load("hist_cl.npy")
+        cl = pd.Series(np.load("hist_cl.npy"))
         op = np.load("hist_op.npy")
         lo = np.load("hist_lo.npy")
         hi = np.load("hist_hi.npy")
         res = np.load("hist_mean.npy")
-        vol = np.load("vol.npy")
+        vol = pd.Series(np.load("vol.npy"))
         date = np.load("Date.npy")
+        def plot_price_to_volume():
+            sma_vol = pd.Series(sma_indicator(vol, window=20, fillna=False))
+            sma_cl = pd.Series(sma_indicator(cl, window=20, fillna=False))
+            plt.subplot(2, 1, 1)
+            plt.plot(sma_vol)
 
+            plt.ylabel('vol')
+            plt.xlabel('time')
+
+            plt.subplot(2, 1, 2)
+            plt.plot(sma_cl)
+            plt.ylabel('price')
+            plt.xlabel('time')
+            plt.show()
         candles = pd.DataFrame({'open': op, 'close': cl, 'high': hi, 'low': lo, 'mean': res, 'vol': vol, 'Date': date})
 
         X = build_tt_data(candles, params)
@@ -63,13 +80,14 @@ if __name__ == '__main__':
         y_p = labels_p[validation_lag+timesteps:- validation_length]
         y_n = labels_n[validation_lag+timesteps:- validation_length]
 
-        np.save('X', X, allow_pickle=True)
+        xp = shape_data(X, training=True, timesteps=timesteps)
+        np.save('X_t15_l25_f21_s', xp, allow_pickle=True)
         np.save('y_p', y_p, allow_pickle=True)
         np.save('y_n', y_n, allow_pickle=True)
         # np.save('y_val_p', y_val_p, allow_pickle=True)
         # np.save('y_val_n', y_val_n, allow_pickle=True)
         # np.save('val_labels', [0], allow_pickle=True)
-    xp, y_p, y_n, candles = np.load('X.npy', allow_pickle=True), \
+    xp, y_p, y_n, candles = np.load('X_t15_l25_f21_s.npy', allow_pickle=True), \
         np.load('y_p.npy', allow_pickle=True), \
         np.load('y_n.npy', allow_pickle=True), \
         np.load('candles.npy', allow_pickle=True)
@@ -80,7 +98,7 @@ if __name__ == '__main__':
     # y_n = labels_n[validation_lag + timesteps:- validation_length]
     # xn, y_n = shape_data(xn, y_n, training=True)
     if train:
-        xp = shape_data(xp, training=True, timesteps=timesteps)
+
         #   ensure equal number of labels, shuffle, and split
         shuffle_and_train(xp, y_p, 'pos', params)
         # shuffle_and_train(xn, y_n, 'neg')
@@ -137,14 +155,24 @@ if __name__ == '__main__':
                 missn += 1
 
     plotauc(y_pred_p[:preds_len], labels_p[lag:lag+preds_len], 'check data')
-    print(f'p {hitp / (hitp + missn)}')
-    print(f'n {hitn / (hitn + missp)}')
-    print(f'preds bal {baln/(balp+baln)} zeros')
+    precision_p = hitp / (hitp + missp)
+    recall_p = hitp / (hitp + missn)
+    precision_n = hitn / (hitn + missn)
+    recall_n = hitn / (hitn + missp)
+    f1_score_p = 2 * (precision_p * recall_p) / (precision_p + recall_p)
+    f1_score_n = 2 * (precision_n * recall_n) / (precision_n + recall_n)
+    print(f'Recall p  {recall_p:.2f}')  #
+    print(f'Recall n {recall_n:.2f}')
+    print(f'Precision p  {precision_p:.2f}')  #
+    print(f'Precision n {precision_n:.2f}')
+    print(f'f1 p {f1_score_p:.2f}')
+    print(f'f1 n {f1_score_n:.2f}')
+    print(f'preds bal {baln / (balp + baln):.2f} zeros')
     cp = Counter(labels_p[lag:lag+preds_len])
     # cn = Counter(labels_n)
     zeros = cp.most_common(2)[0][1]
     ones = cp.most_common(2)[1][1]
-    print(f'distrib {cp.most_common(2)} zeros {zeros/(zeros+ones)} ones {ones/(zeros+ones)}')
+    print(f'distrib {cp.most_common(2)} zeros {zeros/(zeros+ones):.2f} ones {ones/(zeros+ones):.2f}')
     target = []
     # for i in range(validation_lag+timesteps, validation_length-timesteps):
     # target.append((candles[1][i]-candles[0][i])/candles[0][i])
@@ -217,18 +245,18 @@ if __name__ == '__main__':
         # random_guess(y_pred)
         # random_guess(labels_p[lag:].size, start+validation_lag+timesteps, labels_p[lag:])
         best = -10000000
-        hold_best = []
+        hold_best, holding_m = [], []
         best_params = [0, 0]
-        y_improved = improve_labels(y_pred_p, labels_p[lag:], 5)
-        for i in range(1, 5):
-            for j in range(1, 5):
-                y_improved = improve_labels(y_pred_p, labels_p[lag:], 3)
-                result, __, holding_m = strategy_bench(preds=y_improved,
+        #y_improved = improve_labels(y_pred_p, labels_p[lag:], 5)
+        for i in range(4, 5):
+            for j in range(4, 5):
+                #y_improved = improve_labels(y_pred_p, labels_p[lag:], 3)
+                result, __, holding_m = strategy_bench(preds=y_pred_p,
                                                        # preds=labels_p[lag:],
                                                        start_pos=start+validation_lag+timesteps,
                                                        verb=False,
-                                                       deltab=0.2+0.05*i,
-                                                       deltas=0.2+0.05*j)
+                                                       deltab=0.2,
+                                                       deltas=0.2)
                 if result > best:
                     best = result
                     hold_best = holding_m
@@ -245,7 +273,7 @@ if __name__ == '__main__':
 
     # bench_cand(y_pred_p)
     # bench_cand(y_pred_n)
-    lines = [savgol, savgol_deriv, y_pred_p, labels_p[lag:]]
-    graph(lines=lines, start_g=start, lag=0, col_type=0, params=params)
-    graph(lines=lines, start_g=start, lag=200, col_type=0, params=params)
+    lines = [savgol, savgol_deriv, y_pred_p, labels_p[lag:], holding_m]
+    #graph(lines=lines, start_g=start, lag=0, col_type=0, params=params)
+    #graph(lines=lines, start_g=start, lag=200, col_type=0, params=params)
     # graph(lines=lines, start_g=start, lag=400, col_type=0, params=params)
