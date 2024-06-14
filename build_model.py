@@ -5,37 +5,41 @@ from keras.regularizers import L2
 from keras.models import Sequential
 from keras.layers import LSTM, Dense, Dropout, BatchNormalization
 from keras.optimizers import Adam, Adamax, Adagrad, RMSprop
-
+#from keras.initializers import RandomUniform
 
 def build_model(x_adj, regression, learning_rate, features):
 
     reg_type = 'l2'
+    initializer = 'uniform'#keras.initializers.RandomUniform(minval=-0.0001, maxval=0.0001, seed=42)
     # first layer
     model = Sequential()
-    model.add(LSTM(100,
+    model.add(LSTM(50,
                    input_shape=(x_adj.shape[1], features),
                    return_sequences=True,
                    dropout=0,
                    # recurrent_dropout=0.8,
                    recurrent_regularizer=reg_type,
+                   kernel_initializer=initializer,
                    kernel_regularizer=reg_type))
     model.add(BatchNormalization())
 
     # second layer
-    model.add(LSTM(100, return_sequences=True,
-                   dropout=0.0,
+    #model.add(LSTM(190, return_sequences=True,
+    #               dropout=0.0,
                    # recurrent_dropout=0.8,
-                   recurrent_regularizer=reg_type,
-                   kernel_regularizer=reg_type))
+    #               recurrent_regularizer=reg_type,
+    #               kernel_initializer=initializer,
+    #               kernel_regularizer=reg_type))
     model.add(BatchNormalization())
     model.add(LSTM(100, return_sequences=False,
                    dropout=0.0,
                    recurrent_regularizer=reg_type,
+                   kernel_initializer=initializer,
                    kernel_regularizer=reg_type))
     model.add(BatchNormalization())
     # model.add(Dropout(0.5))
 
-    model.add(Dense(50, activation='relu', kernel_regularizer=reg_type))
+    model.add(Dense(50, activation='relu', kernel_regularizer=reg_type, kernel_initializer=initializer,))
     model.add(BatchNormalization())
     # model.add(AlphaDropout(0.5))
     model.add(Dropout(0.1))
@@ -62,43 +66,50 @@ def build_model_bayesian(hp):
     model = Sequential()
     activation = 'tanh'
     reg_type = 'l2'
-    features = 14
-    timesteps = 15
-    model.add(keras.layers.LSTM(units=hp.Int('units1', min_value=100, max_value=120, step=10),
+    features = 9
+    timesteps = 10
+     #keras.initializers.Zeros()
+    initializer = 'uniform'#keras.initializers.RandomUniform(minval=-0.0001, maxval=0.0001, seed=42)
+    #keras.initializers.RandomNormal(mean=0.0, stddev=0.05, seed=42)
+    #keras.initializers.GlorotNormal(seed=42)
+    model.add(keras.layers.LSTM(units=hp.Int('units1', min_value=120, max_value=140, step=10),
                                 # dropout=0,
                                 # dropout=hp.Float('droput1', min_value=0.00, max_value=0.1, step=0.05),
                                 # recurrent_dropout=hp.Float('redropout', min_value=0.8, max_value=0.8, step=0.1),
                                 activation=activation,
                                 recurrent_regularizer=reg_type,
                                 kernel_regularizer=reg_type,
+                                kernel_initializer=initializer,
                                 return_sequences=True,
                                 input_shape=(timesteps, features)))
     # Attention()
     model.add(BatchNormalization())
-    model.add(keras.layers.LSTM(units=hp.Int('units2', min_value=100, max_value=140, step=10),
+    #model.add(keras.layers.LSTM(units=hp.Int('units2', min_value=160, max_value=210, step=10),
                                 # dropout=0,
-                                recurrent_regularizer=reg_type,
+                                #recurrent_regularizer=reg_type,
                                 # recurrent_dropout=hp.Float('redropout', min_value=0.00, max_value=0.9, step=0.1),
-                                kernel_regularizer=reg_type,
+                                #kernel_regularizer=reg_type,
                                 # dropout=hp.Float('dropout2', min_value=0.00, max_value=0.1, step=0.05),
                                 # return_sequences=True,
-                                return_sequences=True,
-                                activation=activation,
-                                ))
+                                #return_sequences=True,
+                                #activation=activation,
+                               # ))
     # Attention()
-    model.add(BatchNormalization())
-    model.add(keras.layers.LSTM(units=hp.Int('units3', min_value=100, max_value=200, step=10),
+    #model.add(BatchNormalization())
+    model.add(keras.layers.LSTM(units=hp.Int('units3', min_value=120, max_value=160, step=10),
                                 recurrent_regularizer=reg_type,
                                 kernel_regularizer=reg_type,
+                                kernel_initializer=initializer,
                                 activation=activation))
     # Attention()
     model.add(BatchNormalization())
-    model.add(Dense(units=hp.Int('units4_dense', min_value=70, max_value=150, step=10),
+    model.add(Dense(units=hp.Int('units4_dense', min_value=50, max_value=210, step=10),
                     activation='relu',
+                    kernel_initializer=initializer,
                     kernel_regularizer=L2(hp.Choice('L2_1', [1e-4, 1e-3, 1e-2]))))
 
     model.add(BatchNormalization())
-    model.add(Dropout(hp.Float('dropout', min_value=0.00, max_value=0.1, step=0.05)))
+    model.add(Dropout(hp.Float('dropout', min_value=0.00, max_value=0.15, step=0.05)))
     model.add(Dense(2, activation='sigmoid'))
 
     optimizer_choice = hp.Choice('optimizer', ['rms'])
@@ -147,7 +158,7 @@ def opt_search(x_adj, y_adj, xval, yval, trials):
                                                                        restore_best_weights=True
                                                                        ),
                                          keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                                                           factor=0.25,
+                                                                           factor=0.15,
                                                                            patience=5,
                                                                            verbose=1,
                                                                            min_delta=1e-5,
