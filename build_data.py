@@ -12,8 +12,8 @@ from sklearn.preprocessing import MinMaxScaler
 import os
 import joblib
 import time
-import math
-from ta.momentum import AwesomeOscillatorIndicator
+
+from ta.momentum import AwesomeOscillatorIndicator, UltimateOscillator
 # from sklearn.preprocessing import StandardScaler
 import gc
 
@@ -39,9 +39,9 @@ def build_tt_data(data, params):
         t1 = time.time()
         curr_lap = t1-t0
         sum_time += curr_lap
-        print(f'building train data {v} of {length-1}')
+        #print(f' {v} of {length-1}')
         avg_lap = sum_time/(v+1)
-        print(f'expected to last {(length-v)*avg_lap/60:.2f} min, '
+        print(f'building train data expected to last {(length-v)*avg_lap/60:.2f} min, '
               f'avg lap: {avg_lap*100:.2f} ms, curr lap {curr_lap*100:.2f} ms')
 
     #x_tt = np.delete(x_tt, [range(timesteps)], axis=0)
@@ -49,43 +49,50 @@ def build_tt_data(data, params):
 
 
 def build_tt_piece(data, params):
+    add_features = False
+    add_grads = True
     # obtain labels
     validation_length, validation_lag, timesteps = params[:3]
     data = data.reset_index()
     lo, hi, cl, vol = data['low'].astype('float64'), data['high'].astype('float64'), data['close'].astype('float64'), data['vol'].astype('float64')
     # op = data.iloc[:]['open'].astype('float64')
     # obtain features
-    long, med, short = 26, 12, 9
+    long, med, short, hl, ll, sl, ss = params[9:16]
 
     # zeros = np.zeros(len(lo))
     macd = Macd(cl, med, long, short).values
-    ema = ema_indicator(cl, window=long, fillna=False)
+    ema = ema_indicator(cl, window=long)
     macd_n = macd/ema
-    stoch_rsi = StochRsi(cl, period=math.ceil(long/2)).hist_values
-    x = list(range(cl.shape[0]))
-    grad_rsi = np.gradient(stoch_rsi, x)
-    dpo = Dpo(cl, period=math.ceil(long*0.77)).values/sma_indicator(cl, window=math.ceil(long*0.77), fillna=False)
-    cop = Coppock(cl, wma_pd=math.ceil(long/2)+1, roc_long=med-1, roc_short=short+1).values
-    grad_cop = np.gradient(cop, x)
-    boll = BollingerBands(close=cl, window=math.ceil(long*0.77))
+    stoch_rsi = StochRsi(cl, period=14).hist_values
+    sma = sma_indicator(cl, window=long)
+    dpo = Dpo(cl, period=long).values/sma
+    cop = Coppock(cl, wma_pd=10, roc_long=14, roc_short=11).values
+    boll = BollingerBands(close=cl, window=long)# sl
     boll_h = boll.bollinger_hband()/boll.bollinger_mavg()
-    grad_bolh = np.gradient(boll_h, x)
     boll_l = boll.bollinger_lband()/boll.bollinger_mavg()
-    grad_boll = np.gradient(boll_l, x)
-    psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
-    sma = sma_indicator(vol, window=long, fillna=False)
-    sma_awes = sma_indicator(vol, window=math.ceil(long*1.26), fillna=False)
-    obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume()/sma
+    psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2)
+
     ar = AroonIndicator(hi, lo, window=long)
     aru, ard = ar.aroon_up(),  ar.aroon_down()
     sar_d, sar_u = psar.psar_down(), psar.psar_up()
-    awes = AwesomeOscillatorIndicator(hi, lo, window1=math.ceil(short/2),
-                                      window2=math.ceil(long*1.26)).awesome_oscillator()/sma_awes
-    adx = ADXIndicator(hi, lo, cl, window=math.ceil(long/2))
-    adx_p, adx_n, adx_t = adx.adx_pos(), adx.adx_neg(), adx.adx()
-    cci = CCIIndicator(hi, lo, cl, window=math.ceil(long/2)).cci()
-    #eom = sma_ease_of_movement(hi, lo, vol, window=math.ceil(long/2))
-    chai = ChaikinMoneyFlowIndicator(hi, lo, cl, vol, window=math.ceil(long*0.77)).chaikin_money_flow()
+    awes = AwesomeOscillatorIndicator(hi, lo, window1=ss,
+                                      window2=long).awesome_oscillator()/sma
+    if add_grads:
+        #x = list(range(cl.shape[0]))
+        grad_rsi = np.gradient(stoch_rsi)
+        grad_cop = np.gradient(cop)
+        grad_bolh = np.gradient(boll_h)
+        grad_boll = np.gradient(boll_l)
+
+        adx = ADXIndicator(hi, lo, cl, window=14)
+        adx_p, adx_n, adx_t = adx.adx_pos(), adx.adx_neg(), adx.adx()
+        sma_vol = sma_indicator(vol, window=14)
+        obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume() / sma_vol
+        cci = CCIIndicator(hi, lo, cl, window=long).cci()
+        chai = ChaikinMoneyFlowIndicator(hi, lo, cl, vol, window=long).chaikin_money_flow()
+        ult = UltimateOscillator(high=hi, low=lo, close=cl).ultimate_oscillator()
+        eom = sma_ease_of_movement(hi, lo, vol, window=14)
+
     # sar_di = psar.psar_down_indicator()
     # sar_ui = psar.psar_up_indicator()
     nan_indices = np.isnan(sar_d)
@@ -99,13 +106,8 @@ def build_tt_piece(data, params):
                    grad_rsi,
                    sar_d,
                    aru-ard,
-                   # ema,
-                   # ard,
                    obv,
-                   # sar_di,
-                   # sar_ui,
                    awes,
-                   # sar_u,
                    boll_h,
                    grad_bolh,
                    boll_l,
@@ -117,8 +119,9 @@ def build_tt_piece(data, params):
                    adx_n,
                    adx_t,
                    cci,
-                   #eom,
-                   chai
+                   eom,
+                   chai,
+                   ult
                    ])
 
     xe = np.transpose(xe)
@@ -126,46 +129,51 @@ def build_tt_piece(data, params):
 
 
 def build_val_data(data, params):
+    add_features = True
     data = data.reset_index()
     cl, hi, lo, vol = data[1].astype('float64'), data[2].astype('float64'), data[3].astype('float64'), data[5].astype('float64')
-
+    long, med, short, hl, ll, sl, ss = params[9:16]
     # op = data[0]
-    long, med, short = 26, 12, 9
     # zeros = np.zeros(len(lo))
     validation_lag = params[1]
     macd = Macd(cl, med, long, short).values
-    ema = ema_indicator(cl, window=long, fillna=False)
+    ema = ema_indicator(cl, window=long)
     macd_n = np.array(macd)/np.array(ema)
-    stoch_rsi = StochRsi(cl, period=math.ceil(long/2)).hist_values
-    grad_rsi = np.gradient(stoch_rsi, list(range(cl.shape[0])))
-    dpo = Dpo(cl, period=math.ceil(long*0.77)).values / sma_indicator(cl, window=math.ceil(long*0.77), fillna=False)
-    cop = Coppock(cl, wma_pd=math.ceil(long/2)+1, roc_long=med-1, roc_short=short+1).values
-    grad_cop = np.gradient(cop, list(range(cl.shape[0])))
-    boll = BollingerBands(close=cl, window=math.ceil(long*0.77))
+    stoch_rsi = StochRsi(cl, period=14).hist_values
+    sma = sma_indicator(cl, window=long)
+    dpo = Dpo(cl, period=long).values / sma
+    cop = Coppock(cl, wma_pd=10, roc_long=14, roc_short=11).values
+
+    boll = BollingerBands(close=cl, window=long)
     boll_h = boll.bollinger_hband()/boll.bollinger_mavg()
-    grad_bolh = np.gradient(boll_h, list(range(cl.shape[0])))
     boll_l = boll.bollinger_lband()/boll.bollinger_mavg()
-    grad_boll = np.gradient(boll_l, list(range(cl.shape[0])))
-    psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2, fillna=False)
+    psar = PSARIndicator(hi, lo, cl, step=0.02, max_step=0.2)
     sar_d, sar_u = psar.psar_down(), psar.psar_up()
     awes = AwesomeOscillatorIndicator(hi, lo,
-                                      window1=math.ceil(short/2), window2=math.ceil(long * 1.26)).awesome_oscillator()
-    sma = np.array(sma_indicator(cl, window=long, fillna=False))
-    sma_awes = sma_indicator(vol, window=math.ceil(long * 1.26), fillna=False)
-    awes_n = np.array(awes)/sma_awes
+                                      window1=ss, window2=long).awesome_oscillator()
+
+    awes_n = np.array(awes)/sma
     nan_indices = np.isnan(sar_d)
-    gogo = range(nan_indices.index[0], nan_indices.index[0]+len(nan_indices))
-    obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume()
-    obv_n = np.array(obv)/sma
     ar = AroonIndicator(hi, lo, window=long)
     aru, ard = ar.aroon_up(), ar.aroon_down()
-    adx = ADXIndicator(hi, lo, cl, window=math.ceil(long/2))
-    adx_p, adx_n, adx_t = adx.adx_pos(), adx.adx_neg(), adx.adx()
-    cci = CCIIndicator(hi, lo, cl, window=math.ceil(long/2)).cci()
-    # eom = sma_ease_of_movement(hi, lo, vol, window=math.ceil(long/2))
-    chai = ChaikinMoneyFlowIndicator(hi, lo, cl, vol, window=math.ceil(long*0.77)).chaikin_money_flow()
+    if add_features:
+        grad_bolh = np.gradient(boll_h)
+        grad_boll = np.gradient(boll_l)
+        grad_cop = np.gradient(cop)
+        grad_rsi = np.gradient(stoch_rsi)
+
+        adx = ADXIndicator(hi, lo, cl, window=14)
+        adx_p, adx_n, adx_t = adx.adx_pos(), adx.adx_neg(), adx.adx()
+        sma_vol = np.array(sma_indicator(vol, window=14, fillna=False))
+        obv = OnBalanceVolumeIndicator(cl, vol).on_balance_volume()
+        obv_n = np.array(obv)/sma_vol
+        cci = CCIIndicator(hi, lo, cl, window=long).cci()
+        chai = ChaikinMoneyFlowIndicator(hi, lo, cl, vol, window=long).chaikin_money_flow()
+        ult = UltimateOscillator(high=hi, low=lo, close=cl).ultimate_oscillator()
+        eom = sma_ease_of_movement(hi, lo, vol, window=14)
     # sar_di = psar.psar_down_indicator()
     # sar_ui = psar.psar_up_indicator()
+    gogo = range(nan_indices.index[0], nan_indices.index[0]+len(nan_indices))
     for ind in gogo:
         if nan_indices[ind]:
             sar_d[ind] = sar_u[ind]
@@ -174,9 +182,7 @@ def build_val_data(data, params):
                    stoch_rsi,
                    grad_rsi,
                    sar_d,
-                   # sar_u,
                    aru - ard,
-                   # ard,
                    obv_n,
                    awes_n,
                    boll_h,
@@ -190,8 +196,9 @@ def build_val_data(data, params):
                    adx_n,
                    adx_t,
                    cci,
-                   # eom,
-                   chai
+                   eom,
+                   chai,
+                   ult
                    ])
 
     xv = np.transpose(xv)
@@ -220,7 +227,7 @@ def shape_data(x_s, training, timesteps, scaler=None):
         onestep = x_s[t - timesteps:t]
         feat_nums = [range(19)]
         drop_features = [5, 8, 10, 11]
-        onestep = onestep[:, np.setdiff1d(feat_nums, drop_features)]
+        #onestep = onestep[:, np.setdiff1d(feat_nums, drop_features)]
         # onestep = scaler.fit_transform(onestep)
         # onestep = normalise(onestep)
         reshaped.append(onestep)
