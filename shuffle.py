@@ -13,12 +13,12 @@ from keras.utils import to_categorical
 from sklearn.metrics import auc
 from sklearn.metrics import roc_curve
 # from sklearn.model_selection import StratifiedKFold
-
+import copy
 
 def plothistories(histories, regression):
     for history in histories:
         # summarize history for accuracy and loss
-
+        plt.figure(3)
         plt.subplot(2, 1, 1)
         plt.plot(history.history['loss'])
         plt.plot(history.history['val_loss'])
@@ -48,12 +48,30 @@ def plotauc(y_pred_p, yval_p, mess):
     fpr_keras, tpr_keras, thresholds_keras = roc_curve(yval_p, y_pred_p)
     auc_keras = auc(fpr_keras, tpr_keras)
 
-    plt.figure(3)
+    plt.figure(1)
     plt.plot([0, 1], [0, 1], 'k--')
     plt.plot(fpr_keras, tpr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
     plt.plot(fpr_keras, tpr_keras, label='RF (area = {:.3f})'.format(auc_keras))
     plt.xlabel('False positive rate')
     plt.ylabel('True positive rate')
+    plt.title(f'ROC curve {mess}')
+    plt.legend(loc='best')
+    plt.show()
+    y_inverted = copy.deepcopy(y_pred_p)
+    y_val_inv = copy.deepcopy(yval_p)
+    for idx, y in enumerate(y_pred_p):
+        y_inverted[idx] = 1-y
+        y_val_inv[idx] = 1-y_val_inv[idx]
+    fnr_keras, tnr_keras, thresholds_keras = roc_curve(y_val_inv, y_inverted)
+
+    auc_keras = auc(fnr_keras, tnr_keras)
+
+    plt.figure(2)
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.plot(fnr_keras, tnr_keras, label='Keras (area = {:.3f})'.format(auc_keras))
+    plt.plot(fnr_keras, tnr_keras, label='RF (area = {:.3f})'.format(auc_keras))
+    plt.xlabel('False negative rate')
+    plt.ylabel('True negative rate')
     plt.title(f'ROC curve {mess}')
     plt.legend(loc='best')
     plt.show()
@@ -70,7 +88,7 @@ def shuffle_and_train(x_adj, y_adj, tag, params):
     train_model = params[8]
     features = params[3]
     restore_hist = False
-    trials = 14
+    trials = 10
     # save some data for testing
     # train_idx = int(cut * split)
     if reshuffle:
@@ -158,20 +176,19 @@ def shuffle_and_train(x_adj, y_adj, tag, params):
             np.load(f'yval_{tag}.npy', allow_pickle=True)
 
         print(f'nans count {np.count_nonzero(np.isnan(xtrain))}')
-        model = build_model(xtrain, regression=regression, learning_rate=0.003, features=features)
+        model = build_model(xtrain, regression=regression, learning_rate=0.002, features=features)
         if not regression:
             ytrain, yval = to_categorical(ytrain, 2), to_categorical(yval, 2)
         # checkpoint_filepath = f'timeseries_bayes_opt_POC/trial_05/checkpoint'
         checkpoint_filepath = f'checkpoint.weights.h5'
+        if regression:
+            monitor = 'val_loss'
+            mode = 'min'
+        else:
+            monitor = 'val_loss'
+            mode = 'min'
         for lr in range(1, 2):
 
-            #opt_search(xtrain, ytrain, xval, yval, trials)
-            if regression:
-                monitor = 'val_loss'
-                mode = 'min'
-            else:
-                monitor = 'val_loss'
-                mode = 'min'
             model_checkpoint_callback = ModelCheckpoint(
                 filepath=checkpoint_filepath,
                 save_weights_only=True,
@@ -182,32 +199,35 @@ def shuffle_and_train(x_adj, y_adj, tag, params):
                                        patience=15,
                                        verbose=1,
                                        restore_best_weights=True)
+            reduce_lr = ReduceLROnPlateau(monitor='val_loss',
+                                          factor=0.2,
+                                          patience=5,
+                                          verbose=1,
+                                          min_delta=1e-5,
+                                          mode='min')
             if os.path.isfile(checkpoint_filepath) and use_checkpoints:
                 model.load_weights(checkpoint_filepath)
                 print(f'loaded weights')
             if train_model:
                 # with tf.device('/gpu:0'):
                 history = model.fit(xtrain, ytrain,
-                                    epochs=300,
+                                    epochs=3,
                                     batch_size=8192,
                                     shuffle=True,
                                     validation_data=(xval, yval),
                                     callbacks=[model_checkpoint_callback,
                                                early_stop,
-                                               ReduceLROnPlateau(monitor='val_loss',
-                                                                 factor=0.5,
-                                                                 patience=5,
-                                                                 verbose=1,
-                                                                 min_delta=1e-5,
-                                                                 mode='min')])
+                                               reduce_lr])
                 model.load_weights(checkpoint_filepath)
                 y_pred_p = model.predict(xval)
                 histories.append(history)
-                history.to_pickle("./train_history.pkl")
+                pd.DataFrame(history.history).to_pickle("./train_history.pkl")
 
                 if restore_hist:
                     history = pd.read_pickle("./train_history.pkl")
                 plothistories([history], regression)
                 plotauc(y_pred_p.T[0], yval.T[0], 'val data')
                 model.save('my_model.keras')
+            else:
+                opt_search(xtrain, ytrain, xval, yval, trials)
 
